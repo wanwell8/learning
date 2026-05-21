@@ -41,32 +41,72 @@ def hour_fmt(h):
 
 # ===========================================================================
 # Figure 2 — 24-hour envelopes (3-panel small multiples + summary inset)
+# Now with an "inputs" strip showing the realistic load + tariff that drive
+# each scenario, and a paper-Table-III reference marker.
 # ===========================================================================
 def figure_2():
     data = json.loads((DATA_DIR / "fig2_envelopes.json").read_text())
 
-    W, H = 1200, 760
+    W, H = 1280, 880
     c = Canvas(W, H)
 
     title_block(
         c, 50, 38,
         "Figure 2  ·  24-hour DR Response Interval Envelopes",
-        "Multi-driver interval (proposed) vs unconstrained, fixed-parameter, and probabilistic baselines"
+        "Multi-driver interval (proposed) vs unconstrained, fixed-parameter, and probabilistic baselines  ·  "
+        "synthesised on realistic residential load curves with morning shoulder, midday AC plateau, evening peak, and post-peak rebound"
     )
 
-    # 3 stacked panels (one per scenario) on the left, peak-hour summary on the right
+    # === inputs strip across the top: 3 columns showing load + tariff per scenario ===
+    inp_y = 90
+    inp_h = 130
+    inp_w = (W - 100 - 60) / 3
+    for i, scn in enumerate(SCN_ORDER):
+        d = data[scn]
+        ix = 50 + i * (inp_w + 30)
+        ax_load = Axes(c, ix + 40, inp_y, inp_w - 80, inp_h - 30,
+                       -0.5, 23.5, 0, max(d["load"]) * 1.18)
+        ax_load.draw_background()
+        ax_load.draw_grid([0, 6, 12, 18], nice_ticks(0, ax_load.ymax, 4))
+        # base load
+        ax_load.fill_between(list(range(24)), [0]*24, d["load"],
+                              fill=SCN_COLOR[scn], opacity=0.18)
+        ax_load.line(list(range(24)), d["load"],
+                     stroke=SCN_COLOR[scn], width=2.2)
+        # tariff overlay (right axis -- redrawn as a normalized 0-1 curve)
+        cref = d["cref"]
+        cref_max = max(cref)
+        cref_norm = [v / cref_max * ax_load.ymax * 0.92 for v in cref]
+        ax_load.line(list(range(24)), cref_norm,
+                     stroke=COLOR_FIXED, width=1.5, dash="4 3", opacity=0.75)
+        # peak hour marker
+        ax_load.vline(d["peak_hour"], color="#444", width=1.0, dash="2 3")
+        ax_load.draw_axes(
+            xticks=[0, 6, 12, 18], yticks=nice_ticks(0, ax_load.ymax, 4),
+            xfmt=hour_fmt, yfmt=lambda v: f"{v:.2f}",
+            xlabel=None, ylabel="MW" if i == 0 else None,
+            title=f"{scn}  ·  inputs",
+            subtitle=f"peak {hour_fmt(d['peak_hour'])}   τ∈[{[0.40,0.30,0.20][i]:.2f},{[0.70,0.50,0.40][i]:.2f}]   η_peak={[0.25,0.20,0.10][i]:.2f}"
+        )
+        # mini legend
+        c.add(
+            f'<text x="{ix + 40:.1f}" y="{inp_y + inp_h - 8:.1f}" font-size="9.5" fill="{COLOR_TEXT_MUT}">'
+            f'<tspan fill="{SCN_COLOR[scn]}" font-weight="600">— base load (MW)</tspan>'
+            f'   <tspan fill="{COLOR_FIXED}">--- ToU tariff (norm.)</tspan></text>'
+        )
+
+    # 3 stacked panels (one per scenario) for ΔP envelopes
     panel_x = 90
-    panel_w = 720
-    panel_h = 170
-    panel_gap = 30
-    panel_y0 = 90
+    panel_w = 770
+    panel_h = 145
+    panel_gap = 28
+    panel_y0 = 260
 
     hours = list(range(24))
 
     # determine common y-range across all scenarios for proposed/unconstr
     y_lo = min(min(d["unconstrained"]["lower"]) for d in data.values())
     y_hi = max(max(d["unconstrained"]["upper"]) for d in data.values())
-    # symmetric pad
     pad = (y_hi - y_lo) * 0.15
     y_lo -= pad
     y_hi += pad
@@ -86,27 +126,6 @@ def figure_2():
         xticks = [0, 3, 6, 9, 12, 15, 18, 21]
         yticks = nice_ticks(y_lo, y_hi, 5)
         ax.draw_grid(xticks, yticks)
-
-        # base-load mini overlay (rescaled, faint, top-half band)
-        loadP = d["load"]
-        lmax = max(loadP)
-        # shade base-load profile in light gray on a separate scaled curve at top
-        # (we draw it scaled to panel height upper portion)
-        ax.canvas.add(
-            f'<g opacity="0.55">'
-        )
-        # base load drawn against secondary axis (proportional, hugging top)
-        # we'll just draw a faint area scaled to top 35% of panel
-        max_alloc = y_hi - (y_hi - y_lo) * 0.05
-        floor_alloc = y_hi - (y_hi - y_lo) * 0.40
-        scaled_load = [floor_alloc + (max_alloc - floor_alloc) * (lp / lmax) for lp in loadP]
-        ax.fill_between(hours, [floor_alloc] * 24, scaled_load,
-                        fill=COLOR_LOAD, opacity=0.18)
-        ax.line(hours, scaled_load, stroke=COLOR_LOAD, width=1.2, opacity=0.7)
-        ax.canvas.add('</g>')
-        # tiny label "base load (rescaled)"
-        ax.text(panel_x + panel_w - 6, py + 12, "base load (rescaled)",
-                anchor="end", color=COLOR_TEXT_MUT, size=9.5, in_data=False)
 
         # unconstrained envelope (outer, lightest)
         ax.fill_between(hours, d["unconstrained"]["lower"], d["unconstrained"]["upper"],
@@ -164,47 +183,57 @@ def figure_2():
     inset_w = W - inset_x - 40
     inset_h = (panel_h + panel_gap) * 3 - panel_gap
 
-    # Group bar chart: per scenario, 4 methods
+    # Group bar chart: per scenario, 4 methods, with paper-Table-III hairlines
     ax2 = Axes(c, inset_x + 50, inset_y + 50, inset_w - 60, inset_h - 90,
                -0.5, 2.5,
                0, max(max(d["stats"]["peak_hour_width_unconstrained"],
                           d["stats"]["peak_hour_width_proposed"],
-                          d["stats"]["peak_hour_width_probabilistic"]) for d in data.values()) * 1.25)
+                          d["stats"]["peak_hour_width_probabilistic"]) for d in data.values()) * 1.30)
     ax2.draw_background()
     yticks2 = nice_ticks(0, ax2.ymax, 6)
     ax2.draw_grid([0, 1, 2], yticks2)
 
     methods = [
-        ("Proposed",       "peak_hour_width_proposed",       COLOR_PROPOSED, "proposed"),
-        ("Unconstrained",  "peak_hour_width_unconstrained",  COLOR_UNCONSTR, "unconstrained"),
-        ("Probabilistic",  "peak_hour_width_probabilistic",  COLOR_PROB,     "probabilistic"),
-        ("Fixed",          "peak_hour_width_fixed",          COLOR_FIXED,    "fixed"),
+        ("Proposed",       "peak_hour_width_proposed",       COLOR_PROPOSED, "proposed",       "proposed"),
+        ("Unconstrained",  "peak_hour_width_unconstrained",  COLOR_UNCONSTR, "unconstrained",  "unconstrained"),
+        ("Probabilistic",  "peak_hour_width_probabilistic",  COLOR_PROB,     "probabilistic",  None),
+        ("Fixed",          "peak_hour_width_fixed",          COLOR_FIXED,    "fixed",          "fixed"),
     ]
     bar_w = 0.18
     n_methods = len(methods)
-    for j, (lbl, key, color, _) in enumerate(methods):
+    for j, (lbl, key, color, _, paper_key) in enumerate(methods):
         for i, scn in enumerate(SCN_ORDER):
             v = data[scn]["stats"][key]
             x0 = i - (n_methods * bar_w) / 2 + j * bar_w
             ax2.bar(x0, 0, bar_w * 0.92, v, fill=color, opacity=0.92, stroke=color)
-            # value label
             if v > ax2.ymax * 0.02:
-                ax2.text(x0 + bar_w * 0.46, v + ax2.ymax * 0.02, f"{v:.3f}",
+                ax2.text(x0 + bar_w * 0.46, v + ax2.ymax * 0.02, f"{v*1000:.0f}",
                          anchor="middle", size=8.5, color=COLOR_TEXT)
+            # Paper Table III reference line (short black tick at value)
+            if paper_key is not None:
+                pv = data[scn]["paper_table3"][paper_key]
+                if pv is not None and pv > 0:
+                    sx_l = ax2.sx(x0)
+                    sx_r = ax2.sx(x0 + bar_w * 0.92)
+                    sy_p = ax2.sy(pv)
+                    c.add(
+                        f'<line x1="{sx_l-2:.1f}" y1="{sy_p:.1f}" x2="{sx_r+2:.1f}" y2="{sy_p:.1f}" '
+                        f'stroke="#111" stroke-width="2.0"/>'
+                    )
 
     ax2.draw_axes(
         xticks=[0, 1, 2], yticks=yticks2,
         xfmt=lambda v: SCN_ORDER[int(v)],
-        yfmt=lambda v: f"{v:.2f}",
-        ylabel="Peak-hour ΔP interval width  (MW)",
-        title="Peak-hour interval width by method",
-        subtitle="Method comparison at scenario peak hour"
+        yfmt=lambda v: f"{v*1000:.0f}",
+        ylabel="Peak-hour ΔP interval width  (kW)",
+        title="Peak-hour width by method",
+        subtitle="black tick = paper Table III reference"
     )
 
     # legend below summary inset (placed under the axes, not over them)
     legend(c, inset_x + 50, inset_y + inset_h + 12,
            [(m[0], m[2], 'band' if 'proposed' in m[3] or 'unconstr' in m[3] else 'line')
-            for m in methods],
+            for m in methods] + [("Paper Table III", "#111", "line")],
            box_w=inset_w - 100, columns=2)
 
     # caption
@@ -633,26 +662,40 @@ def figure_5():
         f'font-size="10.5" fill="{COLOR_TEXT}" font-weight="500">ΔP width</text>'
     )
 
-    # contour annotation: highlight summer-baseline operating point
-    # summer has tau_width = 0.30, eta_peak = 0.25 -- find nearest cell
+    # operating-point markers: highlight three typical-day operating points
     def nearest(arr, v):
         return min(range(len(arr)), key=lambda i: abs(arr[i] - v))
-    j_b = nearest(tau_w, 0.30)
-    i_b = nearest(eta_p, 0.25)
-    cx_b = hx + j_b * cell
-    cy_b = hy + (nrows - 1 - i_b) * cell
-    c.add(
-        f'<rect x="{cx_b-1:.1f}" y="{cy_b-1:.1f}" width="{cell+1:.1f}" height="{cell+1:.1f}" '
-        f'fill="none" stroke="#ffffff" stroke-width="3"/>'
-    )
-    c.add(
-        f'<rect x="{cx_b-1:.1f}" y="{cy_b-1:.1f}" width="{cell+1:.1f}" height="{cell+1:.1f}" '
-        f'fill="none" stroke="#1f2933" stroke-width="1.5" stroke-dasharray="4 2"/>'
-    )
-    c.add(
-        f'<text x="{cx_b + cell + 12:.1f}" y="{cy_b - 6:.1f}" font-size="10.5" '
-        f'fill="{COLOR_TEXT}" font-weight="600">Summer baseline</text>'
-    )
+
+    op_points = [
+        ("Summer",   0.30, 0.25, "#fff8f0", "#d1495b"),
+        ("Winter",   0.20, 0.20, "#fff8f0", "#2e6f95"),
+        ("Shoulder", 0.20, 0.10, "#fff8f0", "#669973"),
+    ]
+    for name, tw, ep, halo, edge in op_points:
+        j_b = nearest(tau_w, tw)
+        i_b = nearest(eta_p, ep)
+        cx_b = hx + j_b * cell + cell / 2
+        cy_b = hy + (nrows - 1 - i_b) * cell + cell / 2
+        # ring + dot
+        c.add(
+            f'<circle cx="{cx_b:.1f}" cy="{cy_b:.1f}" r="14" fill="none" '
+            f'stroke="#ffffff" stroke-width="3"/>'
+        )
+        c.add(
+            f'<circle cx="{cx_b:.1f}" cy="{cy_b:.1f}" r="14" fill="none" '
+            f'stroke="{edge}" stroke-width="2"/>'
+        )
+        # label outside the cell
+        lx = cx_b + 22
+        ly = cy_b + 3.5
+        c.add(
+            f'<rect x="{lx-3:.1f}" y="{ly-10:.1f}" width="{len(name)*7+6:.0f}" height="15" '
+            f'fill="{halo}" stroke="{edge}" stroke-width="1" rx="3" opacity="0.95"/>'
+        )
+        c.add(
+            f'<text x="{lx:.1f}" y="{ly:.1f}" font-size="10.5" font-weight="600" '
+            f'fill="{edge}">{name}</text>'
+        )
 
     caption(c, 50, H - 65, W - 100,
             "Each cell reports the proposed-method 24-h interval width at the Summer-typical-day peak hour, in kW, "

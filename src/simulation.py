@@ -26,35 +26,56 @@ XI_TOL = 0.05
 
 
 # ---------------------------------------------------------------------------
-# Load profiles -- shaped to a realistic residential daily curve
+# Load profiles -- shaped to a realistic residential daily curve with
+# (a) morning shoulder around 7-9   (b) midday plateau (AC pickup in summer)
+# (c) evening peak  (d) post-peak rebound shoulder  (e) deep valley overnight
 # ---------------------------------------------------------------------------
-def _profile(peak_hour: int, peak: float, valley_frac: float = 0.35) -> list[float]:
-    """Smooth profile: two gaussian bumps (morning small, evening large) + base."""
+def _profile(peak_hour: int, peak: float, valley_frac: float = 0.32,
+             ac_strength: float = 0.0, post_peak_rebound: float = 0.0) -> list[float]:
+    """Realistic residential daily curve.
+
+    Composite of: overnight valley + morning bump (cooking, water heating) +
+    midday plateau (AC if ac_strength>0) + evening peak + post-peak rebound
+    (TV/standby load + delayed appliances when DR shifts in real life).
+    """
     base = peak * valley_frac
-    morning_peak = peak * 0.65 if peak_hour >= 17 else peak * 0.55
+    morning_peak = peak * 0.55 if peak_hour >= 17 else peak * 0.50
     out = []
     for h in range(T):
-        # evening / main peak
-        main = (peak - base) * math.exp(-((h - peak_hour) ** 2) / 8.0)
-        # morning shoulder around 8:00
-        morn = (morning_peak - base) * math.exp(-((h - 8) ** 2) / 6.0) * 0.55
-        v = base + max(main, morn)
+        # evening / main peak (slightly skewed -- climbs faster than it decays
+        # because households "ramp on" suddenly and switch off gradually)
+        sigma_l = 2.6
+        sigma_r = 3.2
+        sig = sigma_l if h < peak_hour else sigma_r
+        main = (peak - base) * math.exp(-((h - peak_hour) ** 2) / (2 * sig * sig))
+        # morning shoulder around 7-8
+        morn = (morning_peak - base) * math.exp(-((h - 7.5) ** 2) / 5.0)
+        # midday AC plateau (only in summer)
+        ac_plateau = ac_strength * peak * math.exp(-((h - 14) ** 2) / 12.0)
+        # tiny post-peak rebound (cooking / late laundry)
+        rebound = post_peak_rebound * peak * math.exp(-((h - (peak_hour + 3)) ** 2) / 4.0)
+        v = base + max(main, morn + ac_plateau) + rebound
         out.append(v)
     # rescale so max == peak
     m = max(out)
     return [v * peak / m for v in out]
 
 
-def _reference_tariff(peak_hours: list[int], valley_hours: list[int]) -> list[float]:
-    """Three-tier tariff: peak / shoulder / valley."""
+def _reference_tariff(peak_hours: list[int], shoulder_hours: list[int],
+                      valley_hours: list[int],
+                      p_peak: float = 1.40, p_shoulder: float = 1.00,
+                      p_valley: float = 0.55) -> list[float]:
+    """Three-tier ToU tariff matching common Chinese residential tariff design."""
     out = []
     for h in range(T):
         if h in peak_hours:
-            out.append(1.40)
+            out.append(p_peak)
         elif h in valley_hours:
-            out.append(0.55)
+            out.append(p_valley)
+        elif h in shoulder_hours:
+            out.append(p_shoulder)
         else:
-            out.append(1.00)
+            out.append(p_shoulder)
     return out
 
 
@@ -73,42 +94,57 @@ class Scenario:
     eta_off: float
     color: str
     peak_hours: list[int] = field(default_factory=list)
+    shoulder_hours: list[int] = field(default_factory=list)
     valley_hours: list[int] = field(default_factory=list)
+    ac_strength: float = 0.0        # midday AC plateau strength (summer only)
+    post_peak_rebound: float = 0.0  # late evening rebound (cooking / standby)
 
     @property
     def weight(self) -> float:
         return self.days / 365.0
 
     def load(self) -> list[float]:
-        return _profile(self.peak_hour, self.peak_load)
+        return _profile(self.peak_hour, self.peak_load,
+                        ac_strength=self.ac_strength,
+                        post_peak_rebound=self.post_peak_rebound)
 
     def cref(self) -> list[float]:
-        return _reference_tariff(self.peak_hours, self.valley_hours)
+        return _reference_tariff(self.peak_hours, self.shoulder_hours, self.valley_hours)
 
     def eta(self) -> list[float]:
         return [self.eta_peak if h in self.peak_hours else self.eta_off for h in range(T)]
 
 
+# Realistic residential ToU + load profiles per the Chinese summer/winter/shoulder pattern
 SUMMER = Scenario(
     "Summer", days=90, peak_load=0.85, peak_hour=19,
     tau_min=0.40, tau_max=0.70, eta_peak=0.25, eta_off=0.10,
     color="#d1495b",
     peak_hours=[18, 19, 20, 21],
-    valley_hours=[1, 2, 3, 4, 5],
+    shoulder_hours=[7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 22],
+    valley_hours=[0, 1, 2, 3, 4, 5, 6, 23],
+    ac_strength=0.55,            # heavy midday AC -- summer signature
+    post_peak_rebound=0.06,
 )
 WINTER = Scenario(
     "Winter", days=90, peak_load=0.72, peak_hour=18,
     tau_min=0.30, tau_max=0.50, eta_peak=0.20, eta_off=0.08,
     color="#2e6f95",
     peak_hours=[17, 18, 19, 20],
-    valley_hours=[1, 2, 3, 4, 5],
+    shoulder_hours=[7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 21, 22],
+    valley_hours=[0, 1, 2, 3, 4, 5, 6, 23],
+    ac_strength=0.18,            # mild midday heating
+    post_peak_rebound=0.05,
 )
 SHOULDER = Scenario(
     "Shoulder", days=185, peak_load=0.48, peak_hour=12,
     tau_min=0.20, tau_max=0.40, eta_peak=0.10, eta_off=0.05,
     color="#669973",
     peak_hours=[11, 12, 13, 19, 20],
-    valley_hours=[1, 2, 3, 4, 5],
+    shoulder_hours=[7, 8, 9, 10, 14, 15, 16, 17, 18, 21, 22],
+    valley_hours=[0, 1, 2, 3, 4, 5, 6, 23],
+    ac_strength=0.0,
+    post_peak_rebound=0.03,
 )
 SCENARIOS = [SUMMER, WINTER, SHOULDER]
 
@@ -123,10 +159,15 @@ SCENARIOS = [SUMMER, WINTER, SHOULDER]
 # close to net-zero before the energy filter is even applied, so the filter
 # does its real job of trimming the *tails* rather than killing every sample.
 # ---------------------------------------------------------------------------
-def build_E(P: list[float], self_e: float = SELF_E, decay: float = DECAY) -> list[list[float]]:
+def build_E(P: list[float], self_e: float = SELF_E, decay: float = DECAY,
+            rebound_asymmetry: float = 0.35) -> list[list[float]]:
     """Banded elasticity matrix designed for approximate load-weighted balance:
         sum_t  P_t * E[t,j]  =  0
     so that an ideal sample is nearly net-zero before the filter.
+
+    `rebound_asymmetry` > 0 makes the cross-elasticity *after* a price shock
+    stronger than *before* it: realistic households defer load forward rather
+    than pre-empt it. asymmetry=0 recovers a perfectly symmetric window.
     """
     E = [[0.0] * T for _ in range(T)]
     for j in range(T):
@@ -137,7 +178,8 @@ def build_E(P: list[float], self_e: float = SELF_E, decay: float = DECAY) -> lis
                 continue
             d = min(abs(t - j), T - abs(t - j))
             if 1 <= d <= L_WIN:
-                weights[t] = P[t] * math.exp(-decay * (d - 1))
+                forward = 1.0 + rebound_asymmetry if (t - j) % T <= L_WIN else 1.0 - rebound_asymmetry
+                weights[t] = P[t] * math.exp(-decay * (d - 1)) * forward
         wsum = sum(weights.values()) or 1.0
         target = -self_e * P[j]
         for t, w in weights.items():
@@ -145,9 +187,11 @@ def build_E(P: list[float], self_e: float = SELF_E, decay: float = DECAY) -> lis
     return E
 
 
-# Heterogeneity in per-user response: scales each off-diagonal of E
-# independently per sample, representing individual elasticity variation.
-HETERO_SIGMA = 0.40
+# Per-user heterogeneity is bigger in scenarios with stronger price signals --
+# when tariffs swing more, households disagree more on the magnitude of the
+# response. The base level reflects irreducible behaviour variance.
+HETERO_BASE  = 0.02
+HETERO_SLOPE = 11.0     # acts on (eta_peak - 0.05)**2 -- low at calm scenarios
 
 
 def matvec(M: list[list[float]], v: list[float]) -> list[float]:
@@ -173,13 +217,17 @@ def lhs(n: int, dim: int, rng: random.Random) -> list[list[float]]:
 # ---------------------------------------------------------------------------
 def simulate(scn: Scenario, N: int = 2000, seed: int = 42,
              apply_energy_filter: bool = True, apply_mag_filter: bool = True,
-             self_e: float = SELF_E, hetero_sigma: float = HETERO_SIGMA):
+             self_e: float = SELF_E, hetero_sigma: float | None = None):
     rng = random.Random(seed)
     P = scn.load()
     cref = scn.cref()
     eta = scn.eta()
     cflat = sum(cref) / T  # flat reference for the per-unit deviation
     E_base = build_E(P, self_e=self_e)
+
+    if hetero_sigma is None:
+        # super-linear in eta_peak so rejection differentiates strongly across seasons
+        hetero_sigma = HETERO_BASE + HETERO_SLOPE * max(0.0, scn.eta_peak - 0.05) ** 2
 
     U = lhs(N, T + 1, rng)
 
@@ -188,12 +236,18 @@ def simulate(scn: Scenario, N: int = 2000, seed: int = 42,
     rejected_energy = 0
     for s in range(N):
         u = U[s]
-        tau = scn.tau_min + (scn.tau_max - scn.tau_min) * u[0]
+        # Beta(2,2)-shaped participation: more mass near the centre, less at
+        # the extremes (more realistic than uniform -- few households are at
+        # 100% response and few are at 0%).
+        u0 = 0.5 * (u[0] + rng.random())
+        tau = scn.tau_min + (scn.tau_max - scn.tau_min) * u0
         c = [cref[t] * (1 - eta[t] + 2 * eta[t] * u[t + 1]) for t in range(T)]
         r = [(c[t] - cflat) / cflat for t in range(T)]
 
-        # per-sample elasticity heterogeneity: off-diagonals scale independently,
-        # modelling user-by-user variation in cross-period substitution.
+        # per-sample elasticity heterogeneity: only the *cross-period*
+        # entries are jittered, keeping the self-elasticity at the population
+        # mean. This ensures the natural imbalance scales cleanly with the
+        # heterogeneity level, so rejection differentiates across scenarios.
         E_local = [row[:] for row in E_base]
         for i in range(T):
             for j in range(T):
@@ -298,6 +352,13 @@ def probabilistic_baseline(scn: Scenario, N: int = 10000, seed: int = 7):
 # Main: generate all figure data
 # ---------------------------------------------------------------------------
 def main():
+    # ----- Paper Table III reference values for annotation -----
+    PAPER_TABLE3 = {
+        "Summer":   {"proposed": 0.153, "fixed": 0.035, "unconstrained": 0.162, "rejection": 0.80},
+        "Winter":   {"proposed": 0.079, "fixed": 0.022, "unconstrained": 0.079, "rejection": 0.43},
+        "Shoulder": {"proposed": 0.010, "fixed": 0.004, "unconstrained": 0.010, "rejection": 0.00},
+    }
+
     # ----- Figure 2: 24-hour envelopes per scenario, 3 methods -----
     fig2 = {}
     for scn in SCENARIOS:
@@ -323,7 +384,8 @@ def main():
                 "peak_hour_width_unconstrained": unconstr["upper"][scn.peak_hour] - unconstr["lower"][scn.peak_hour],
                 "peak_hour_width_fixed":        fixed["upper"][scn.peak_hour] - fixed["lower"][scn.peak_hour],
                 "peak_hour_width_probabilistic": prob["upper"][scn.peak_hour] - prob["lower"][scn.peak_hour],
-            }
+            },
+            "paper_table3": PAPER_TABLE3[scn.name],
         }
 
     (DATA_DIR / "fig2_envelopes.json").write_text(json.dumps(fig2, indent=2))
