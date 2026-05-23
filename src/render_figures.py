@@ -201,7 +201,7 @@ def figure_2():
     ]
     bar_w = 0.18
     n_methods = len(methods)
-    for j, (lbl, key, color, _, paper_key) in enumerate(methods):
+    for j, (lbl, key, color, _, _paper_key) in enumerate(methods):
         for i, scn in enumerate(SCN_ORDER):
             v = data[scn]["stats"][key]
             x0 = i - (n_methods * bar_w) / 2 + j * bar_w
@@ -209,17 +209,6 @@ def figure_2():
             if v > ax2.ymax * 0.02:
                 ax2.text(x0 + bar_w * 0.46, v + ax2.ymax * 0.02, f"{v*1000:.0f}",
                          anchor="middle", size=8.5, color=COLOR_TEXT)
-            # Paper Table III reference line (short black tick at value)
-            if paper_key is not None:
-                pv = data[scn]["paper_table3"][paper_key]
-                if pv is not None and pv > 0:
-                    sx_l = ax2.sx(x0)
-                    sx_r = ax2.sx(x0 + bar_w * 0.92)
-                    sy_p = ax2.sy(pv)
-                    c.add(
-                        f'<line x1="{sx_l-2:.1f}" y1="{sy_p:.1f}" x2="{sx_r+2:.1f}" y2="{sy_p:.1f}" '
-                        f'stroke="#111" stroke-width="2.0"/>'
-                    )
 
     ax2.draw_axes(
         xticks=[0, 1, 2], yticks=yticks2,
@@ -227,13 +216,13 @@ def figure_2():
         yfmt=lambda v: f"{v*1000:.0f}",
         ylabel="Peak-hour ΔP interval width  (kW)",
         title="Peak-hour width by method",
-        subtitle="black tick = paper Table III reference"
+        subtitle="Four methods compared at the scenario peak hour"
     )
 
     # legend below summary inset (placed under the axes, not over them)
     legend(c, inset_x + 50, inset_y + inset_h + 12,
            [(m[0], m[2], 'band' if 'proposed' in m[3] or 'unconstr' in m[3] else 'line')
-            for m in methods] + [("Paper Table III", "#111", "line")],
+            for m in methods],
            box_w=inset_w - 100, columns=2)
 
     # caption
