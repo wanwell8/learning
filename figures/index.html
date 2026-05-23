@@ -71,62 +71,41 @@
 
 <figure>
   <h2>Figure 3 · Sensitivity of Peak-Hour Interval Width to Design Drivers</h2>
-  <div class="meta">tornado diagram + driver-family swing</div>
+  <div class="meta">tornado diagram of one-at-a-time perturbations around the Summer baseline</div>
   <object data="figure_3_sensitivity.svg" type="image/svg+xml"></object>
   <p class="caption">
-    Left: one-at-a-time perturbations around the Summer-typical-day baseline, ranked by
-    impact on the interval width. The peak-period tariff coefficient η dominates the
-    ranking — narrowing it from 0.25 to 0.15 cuts the band by ≈ 35%; widening it to 0.35
-    expands the band by ≈ 41%. Right: the same data aggregated by driver family, ordered
-    by total swing. Participation rate τ and tariff η appear as comparable design dials,
-    with η producing the larger swing because it scales the per-unit price deviation
-    directly into the response.
+    One-at-a-time perturbations around the Summer-typical-day baseline, ranked by impact
+    on the interval width. The peak-period tariff coefficient η dominates the ranking —
+    narrowing it from 0.25 to 0.15 cuts the band by ≈ 41%; widening it to 0.35 expands
+    the band by ≈ 57%. Participation rate τ and tariff η act as complementary but unequal
+    design dials, with η delivering the larger swing because it scales the per-unit price
+    deviation directly.
   </p>
   <div class="takeaway">
     <b>Design implication:</b> for a system operator, tightening the day-ahead tariff
     band is the cheaper lever per unit of interval-width reduction; tightening the
-    participation forecast through outreach takes a comparable role but at a
-    smaller marginal rate.
+    participation forecast through outreach plays a complementary but smaller role.
   </div>
 </figure>
 
 <figure>
-  <h2>Figure 4 · Sample-Size Convergence and Rejection Behaviour</h2>
-  <div class="meta">8-seed convergence study + filter rejection breakdown</div>
+  <h2>Figure 4 · Sample-Size Convergence</h2>
+  <div class="meta">8-seed convergence study of the peak-hour interval width</div>
   <object data="figure_4_convergence.svg" type="image/svg+xml"></object>
   <p class="caption">
-    Left: peak-hour interval width as the Latin Hypercube sample size N varies from 50 to
-    5000, repeated over 8 random seeds. The width settles inside a ±9% band of the N=5000
-    reference once N ≈ 1000, supporting the paper's N = 2000 setting as a reasonable
-    compromise between fidelity and runtime. Right: filter rejection breakdown by typical
-    day — the energy-conservation filter carries most of the rejection load, with the
-    magnitude cap activating only when participation/tariff bounds drift toward physically
-    aggressive values.
+    Peak-hour interval width as the Latin Hypercube sample size N varies from 50 to 5000,
+    repeated over 8 random seeds. The width settles inside a ±11% band of the N=5000
+    reference once N reaches 2000, and inside ±20% once N reaches 500. Because the
+    envelope is decided by extreme samples, convergence is slower than for
+    mean-statistics estimators; the N=2000 setting used elsewhere in the case study is a
+    reasonable compromise between fidelity and runtime.
   </p>
   <div class="takeaway">
-    <b>Diagnostic value:</b> the rejection-rate column is itself a model diagnostic — a
-    rate above one quarter in a low-η scenario signals that the chosen participation or
-    tariff bounds are inconsistent with the base load profile.
+    <b>Practical note:</b> the dark band shows the inter-quartile spread across seeds;
+    the light band is the full min–max envelope. Both shrink visibly past N=1000.
   </div>
 </figure>
 
-<figure>
-  <h2>Figure 5 · Joint Design-Dial Surface (bonus)</h2>
-  <div class="meta">interval width as a 2-D function of participation-interval width and η<sub>peak</sub></div>
-  <object data="figure_5_heatmap.svg" type="image/svg+xml"></object>
-  <p class="caption">
-    Heat map of the Summer peak-hour interval width (kW) as both design dials are swept
-    independently. The response is approximately linear in either dial within the studied
-    window; a designer can trade participation-bound tightness against day-ahead
-    tariff-band tightness along iso-width curves. The dashed square marks the operating
-    point used in Figs. 2–4.
-  </p>
-  <div class="takeaway">
-    <b>Use:</b> the surface is a tariff-design lookup chart — given a target interval
-    width, read off the (τ-width, η) pairs that achieve it, and pick the one that is
-    cheapest to actuate in the local regulatory environment.
-  </div>
-</figure>
 
 </main>
 </body>
