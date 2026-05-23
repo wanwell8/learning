@@ -20,7 +20,7 @@ COLOR_TEXT     = "#1f2933"
 COLOR_TEXT_MUT = "#5b6770"
 COLOR_BASELINE = "#9aa5b1"
 
-FONT = "'Inter','Helvetica Neue',Helvetica,Arial,sans-serif"
+FONT = "Arial,Helvetica,'Helvetica Neue','Liberation Sans',sans-serif"
 
 
 # ---------------------------------------------------------------------------

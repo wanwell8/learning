@@ -283,12 +283,42 @@ def figure_4():
     log_Ns = [_m.log10(n) for n in Ns]
     ax.fill_between(log_Ns, mins, maxs, fill=COLOR_UNCONSTR, opacity=0.10)
     ax.fill_between(log_Ns, los, his, fill=COLOR_UNCONSTR, opacity=0.22)
-    ax.line(log_Ns, means, stroke=COLOR_UNCONSTR, width=2.2)
-    ax.scatter(log_Ns, means, color=COLOR_UNCONSTR, r=4, opacity=1.0)
+    ax.line(log_Ns, means, stroke=COLOR_UNCONSTR, width=2.4)
+    ax.scatter(log_Ns, means, color=COLOR_UNCONSTR, r=4.5, opacity=1.0)
 
-    for n, mean in zip(Ns, means):
-        ax.text(_m.log10(n), mean + ymax * 0.025,
-                f"{mean*1000:.0f}", anchor="middle", size=9, color=COLOR_TEXT_MUT)
+    # arrow + annotation: highlight where the curve enters the ±11% band
+    in_band_idx = next((i for i, m in enumerate(means)
+                        if abs(m - ref) / ref <= 0.11), len(Ns) - 1)
+    n_in = Ns[in_band_idx]
+    m_in = means[in_band_idx]
+    ax_x = _m.log10(n_in)
+    # annotation label sits to the LEFT and BELOW the entry point, with an
+    # L-shaped leader to keep everything inside the plot area regardless of
+    # where the band entry sits along the x-axis.
+    label_x = ax_x - 1.10
+    label_y = m_in - ymax * 0.30
+    # point we are pointing at
+    tip_x_data = ax_x
+    tip_y_data = m_in - ymax * 0.015
+    sx_lbl, sy_lbl = ax.sx(label_x), ax.sy(label_y)
+    sx_tip, sy_tip = ax.sx(tip_x_data), ax.sy(tip_y_data)
+    # L-leader: from label-end horizontally to right, then up to tip
+    knee_x = sx_tip
+    knee_y = sy_lbl
+    c.add(
+        f'<polyline points="{sx_lbl+150:.1f},{sy_lbl:.1f} {knee_x:.1f},{knee_y:.1f} {sx_tip:.1f},{sy_tip+8:.1f}" '
+        f'fill="none" stroke="{COLOR_TEXT}" stroke-width="1.1" opacity="0.8"/>'
+    )
+    # arrowhead pointing UP into the data point
+    c.add(
+        f'<polygon points="{sx_tip:.1f},{sy_tip:.1f} {sx_tip-3.5:.1f},{sy_tip+7:.1f} {sx_tip+3.5:.1f},{sy_tip+7:.1f}" '
+        f'fill="{COLOR_TEXT}" opacity="0.85"/>'
+    )
+    # annotation text
+    c.add(
+        f'<text x="{sx_lbl:.1f}" y="{sy_lbl+4:.1f}" font-size="10.5" '
+        f'fill="{COLOR_TEXT}" font-weight="600">N = {n_in}: enters &#177;11% band</text>'
+    )
 
     ax.draw_axes(
         xticks=xticks, yticks=yticks,
