@@ -451,6 +451,26 @@ def main():
         "rejection": rejection_by_scn,
     }, indent=2))
 
+    # ----- Figure 5: driver heatmap -- width as a function of tau-width x eta_peak
+    heat = []
+    tau_widths = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40]
+    eta_peaks  = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35]
+    for ep in eta_peaks:
+        row = []
+        for tw in tau_widths:
+            mid = 0.55
+            scn_mod = Scenario(**{**SUMMER.__dict__,
+                                  "tau_min": mid - tw / 2,
+                                  "tau_max": mid + tw / 2,
+                                  "eta_peak": ep})
+            out = simulate(scn_mod, N=1000, seed=21)
+            w = out["upper"][SUMMER.peak_hour] - out["lower"][SUMMER.peak_hour]
+            row.append(w)
+        heat.append(row)
+    (DATA_DIR / "fig5_heatmap.json").write_text(json.dumps({
+        "tau_widths": tau_widths, "eta_peaks": eta_peaks, "values": heat,
+    }, indent=2))
+
     print("[ok] generated:")
     for p in sorted(DATA_DIR.glob("*.json")):
         print("   ", p.name, os.path.getsize(p), "bytes")

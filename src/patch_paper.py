@@ -14,6 +14,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC_DOCX = Path("/root/.claude/uploads/e690f3a5-97d7-4844-b712-9d7233403758/a3960cf8-MultiDriver_DR_Interval_Modeling_Conference.docx")
+
+# Paragraphs to delete from the document (identified by a unique substring).
+PARAGRAPH_DELETIONS = [
+    # The Fig 3 placement marker
+    "[Insert Figure 3 here]",
+    # The Fig 3 caption line
+    "Sensitivity of the DR response interval width at the summer peak hour to participation bounds",
+]
 OUT_DOCX = ROOT / "paper" / "MultiDriver_DR_Interval_Modeling_Conference_revised.docx"
 OUT_DOCX.parent.mkdir(parents=True, exist_ok=True)
 
@@ -337,6 +345,28 @@ def main():
                 print(f"[warn] sequential value not found after {anchor[:40]}...: {old}")
 
     print(f"[info] {seq_count}/{len(SEQUENTIAL_REPLACEMENTS)} sequential replacements applied")
+
+    # --- Apply paragraph deletions ---
+    # Build a child -> parent map so we can remove paragraphs at any nesting depth.
+    parent_of = {child: parent for parent in root.iter() for child in parent}
+    del_count = 0
+    for locate in PARAGRAPH_DELETIONS:
+        target = None
+        for p in root.iter(NS_W + "p"):
+            text = get_paragraph_text(p)
+            if locate in text:
+                target = p
+                break
+        if target is None:
+            print(f"[warn] deletion anchor not found: {locate[:60]}...")
+            continue
+        parent = parent_of.get(target)
+        if parent is None:
+            print(f"[warn] could not find parent for: {locate[:60]}...")
+            continue
+        parent.remove(target)
+        del_count += 1
+    print(f"[info] {del_count}/{len(PARAGRAPH_DELETIONS)} paragraph deletions applied")
 
     # --- Serialize back ---
     new_xml = b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + ET.tostring(root, encoding="utf-8")

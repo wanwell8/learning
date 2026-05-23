@@ -69,24 +69,6 @@
   </div>
 </figure>
 
-<figure>
-  <h2>Figure 3 · Sensitivity of Peak-Hour Interval Width to Design Drivers</h2>
-  <div class="meta">tornado diagram of one-at-a-time perturbations around the Summer baseline</div>
-  <object data="figure_3_sensitivity.svg" type="image/svg+xml"></object>
-  <p class="caption">
-    One-at-a-time perturbations around the Summer-typical-day baseline, ranked by impact
-    on the interval width. The peak-period tariff coefficient η dominates the ranking —
-    narrowing it from 0.25 to 0.15 cuts the band by ≈ 41%; widening it to 0.35 expands
-    the band by ≈ 57%. Participation rate τ and tariff η act as complementary but unequal
-    design dials, with η delivering the larger swing because it scales the per-unit price
-    deviation directly.
-  </p>
-  <div class="takeaway">
-    <b>Design implication:</b> for a system operator, tightening the day-ahead tariff
-    band is the cheaper lever per unit of interval-width reduction; tightening the
-    participation forecast through outreach plays a complementary but smaller role.
-  </div>
-</figure>
 
 <figure>
   <h2>Figure 4 · Sample-Size Convergence</h2>
@@ -106,6 +88,26 @@
   </div>
 </figure>
 
+
+
+<figure>
+  <h2>Figure 5 · Peak-Hour Interval Width as a Joint Function of Design Dials</h2>
+  <div class="meta">heat map of width (kW) over τ-width × η_peak, with iso-width contours and typical-day operating points</div>
+  <object data="figure_5_heatmap.svg" type="image/svg+xml"></object>
+  <p class="caption">
+    Heat map of the Summer peak-hour interval width as both design dials are swept
+    independently. Thin black iso-width curves turn the surface into a usable design
+    chart: for any target interval width, the corresponding curve traces the locus of
+    (τ-width, η_peak) pairs that achieve it. The three labelled circles show where the
+    Summer, Winter, and Shoulder typical-day operating points sit on the surface;
+    their relative position confirms that the tariff dial η carries the larger leverage.
+  </p>
+  <div class="takeaway">
+    <b>Use:</b> read off iso-width contours to trade participation-bound tightness
+    against day-ahead tariff-band tightness, then pick the cheapest-to-actuate pair
+    in the local regulatory environment.
+  </div>
+</figure>
 
 </main>
 </body>

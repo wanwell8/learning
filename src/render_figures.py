@@ -247,107 +247,6 @@ def figure_2():
     print("[ok] figure_2_envelopes.svg")
 
 
-# ===========================================================================
-# Figure 3 — Sensitivity tornado (single panel)
-# ===========================================================================
-def figure_3():
-    data = json.loads((DATA_DIR / "fig3_sensitivity.json").read_text())
-    baseline = data["baseline_width"]
-    variants = data["variants"]
-
-    W, H = 1100, 640
-    c = Canvas(W, H)
-    title_block(
-        c, 50, 38,
-        "Figure 3  ·  Sensitivity of Peak-Hour Interval Width to Design Drivers",
-        "One-at-a-time perturbation of participation / tariff / self-elasticity parameters; baseline = Summer typical day"
-    )
-
-    # tornado bars centered on the canvas
-    pad_x = 60
-    pad_y = 90
-    panel_w = W - 2 * pad_x
-    panel_h = 460
-
-    # group variants by family
-    for v in variants:
-        lbl = v["label"]
-        if lbl.startswith("tau"):
-            v["family"] = "Participation rate τ"
-            v["color"] = "#2e6f95"
-        elif lbl.startswith("eta_peak"):
-            v["family"] = "Peak tariff fluctuation η"
-            v["color"] = "#d1495b"
-        elif lbl.startswith("eta_off"):
-            v["family"] = "Off-peak tariff η"
-            v["color"] = "#e0a800"
-        else:
-            v["family"] = "Self-elasticity"
-            v["color"] = "#669973"
-
-    # sort by absolute delta_pct descending
-    variants_sorted = sorted(variants, key=lambda v: abs(v["delta_pct"]), reverse=True)
-    n = len(variants_sorted)
-
-    max_abs_pct = max(abs(v["delta_pct"]) for v in variants_sorted) * 1.20
-    ax = Axes(c, pad_x + 200, pad_y, panel_w - 220, panel_h - 60,
-              -max_abs_pct, max_abs_pct, -0.5, n - 0.5)
-    ax.draw_background()
-
-    # vertical zero line
-    ax.canvas.add(
-        f'<line x1="{ax.sx(0):.1f}" y1="{ax.y:.1f}" x2="{ax.sx(0):.1f}" y2="{ax.y+ax.h:.1f}" '
-        f'stroke="{COLOR_TEXT}" stroke-width="1.0"/>'
-    )
-    # gridlines
-    xticks = nice_ticks(-max_abs_pct, max_abs_pct, 8)
-    ax.draw_grid(xticks, list(range(n)))
-
-    for i, v in enumerate(variants_sorted):
-        y_pos = n - 1 - i
-        delta = v["delta_pct"]
-        x0 = min(0, delta)
-        w = abs(delta)
-        ax.bar(x0, y_pos - 0.35, w, 0.70, fill=v["color"], opacity=0.85, stroke=v["color"], rx=3)
-        # label on the left margin
-        c.add(
-            f'<text x="{pad_x + 190:.1f}" y="{ax.sy(y_pos)+3.5:.1f}" '
-            f'text-anchor="end" font-size="11" fill="{COLOR_TEXT}">{v["label"]}</text>'
-        )
-        # value annotation at bar tip
-        sign = "+" if delta >= 0 else ""
-        tx = delta + (max_abs_pct * 0.02 if delta >= 0 else -max_abs_pct * 0.02)
-        ax.text(tx, y_pos, f"{sign}{delta:.1f}% ({v['width']*1000:.0f} kW)",
-                anchor="start" if delta >= 0 else "end", size=10, color=COLOR_TEXT, weight="500")
-
-    ax.draw_axes(
-        xticks=xticks, yticks=None,
-        xfmt=lambda v: f"{v:+.0f}%" if v != 0 else "0",
-        xlabel="Change vs baseline (relative %)",
-        ylabel=None,
-        title="Tornado: drivers ranked by impact on interval width",
-        subtitle=f"Baseline width = {baseline*1000:.0f} kW (Summer, peak hour)",
-    )
-
-    # family color legend
-    legend(c, pad_x + 200, pad_y + panel_h - 20,
-           [("Participation rate τ", "#2e6f95", "band"),
-            ("Peak tariff η",        "#d1495b", "band"),
-            ("Off-peak tariff η",    "#e0a800", "band"),
-            ("Self-elasticity",      "#669973", "band")],
-           box_w=panel_w - 220, columns=4)
-
-    caption(c, 50, H - 38, W - 100,
-            "One-at-a-time perturbations around the Summer-typical-day baseline, ranked by impact on the "
-            "interval width. The peak-period tariff coefficient η dominates the ranking and acts almost "
-            "symmetrically. The two design dials (τ and η) produce responses of different magnitude, with "
-            "η delivering the larger swing because it scales the per-unit price deviation directly.")
-
-    (FIG_DIR / "figure_3_sensitivity.svg").write_text(c.render())
-    print("[ok] figure_3_sensitivity.svg")
-
-
-# ===========================================================================
 # Figure 4 — Sample-size convergence (single panel)
 # ===========================================================================
 def figure_4():
@@ -428,10 +327,261 @@ def figure_4():
     print("[ok] figure_4_convergence.svg")
 
 
+# ===========================================================================
+# Figure 5 — Joint design-dial heat-map (with iso-width contours)
+# ===========================================================================
+def figure_5():
+    data = json.loads((DATA_DIR / "fig5_heatmap.json").read_text())
+    tau_w = data["tau_widths"]
+    eta_p = data["eta_peaks"]
+    vals = data["values"]   # values[i_eta][j_tau]
+
+    W, H = 1080, 780
+    c = Canvas(W, H)
+    title_block(
+        c, 50, 38,
+        "Figure 5  ·  Peak-Hour Interval Width as a Joint Function of Design Dials",
+        "Width (kW) at Summer typical-day peak hour, swept over participation-interval width and peak-period tariff η; "
+        "iso-width contours overlaid"
+    )
+
+    # heat area
+    hx, hy = 170, 110
+    nrows = len(eta_p)
+    ncols = len(tau_w)
+    cell = 72
+    hw = ncols * cell
+    hh = nrows * cell
+
+    vmin = min(min(r) for r in vals)
+    vmax = max(max(r) for r in vals)
+
+    def color(v):
+        t = (v - vmin) / (vmax - vmin) if vmax > vmin else 0.5
+        stops = [
+            (0.00, (45, 24, 80)),
+            (0.35, (32, 84, 138)),
+            (0.65, (42, 158, 130)),
+            (1.00, (253, 231, 37)),
+        ]
+        for i in range(len(stops) - 1):
+            if t <= stops[i + 1][0]:
+                t0, c0 = stops[i]; t1, c1 = stops[i + 1]
+                f = (t - t0) / (t1 - t0)
+                r = int(c0[0] + f * (c1[0] - c0[0]))
+                g = int(c0[1] + f * (c1[1] - c0[1]))
+                b = int(c0[2] + f * (c1[2] - c0[2]))
+                return f"rgb({r},{g},{b})"
+        return "rgb(253,231,37)"
+
+    # ---- heat cells ----
+    for i, ep in enumerate(eta_p):
+        for j, tw in enumerate(tau_w):
+            v = vals[i][j]
+            cx = hx + j * cell
+            cy = hy + (nrows - 1 - i) * cell
+            c.add(
+                f'<rect x="{cx:.1f}" y="{cy:.1f}" width="{cell-1.5:.1f}" height="{cell-1.5:.1f}" '
+                f'fill="{color(v)}" stroke="white" stroke-width="1.5"/>'
+            )
+            t_pct = (v - vmin) / (vmax - vmin) if vmax > vmin else 0.5
+            txt_color = "#1f2933" if t_pct > 0.55 else "white"
+            c.add(
+                f'<text x="{cx + cell/2:.1f}" y="{cy + cell/2 + 4:.1f}" text-anchor="middle" '
+                f'font-size="11" fill="{txt_color}" font-weight="600">{v*1000:.0f}</text>'
+            )
+
+    # ---- iso-width contour lines (marching-squares style) ----
+    def _interp(p1, p2, v1, v2, level):
+        if v2 == v1:
+            return p1
+        t = (level - v1) / (v2 - v1)
+        t = max(0.0, min(1.0, t))
+        return (p1[0] + t * (p2[0] - p1[0]), p1[1] + t * (p2[1] - p1[1]))
+
+    def _cell_segments(level, i, j):
+        """Return list of polyline segments for a 4-vertex cell with corner (i,j)..(i+1,j+1).
+
+        Corner order: bl=(i,j), br=(i,j+1), tr=(i+1,j+1), tl=(i+1,j).
+        Coordinates in screen space (centre of heat cells).
+        """
+        # vertex value at (i, j) = vals[i][j]; screen coord centre of cell:
+        def vc(ii, jj):
+            cx = hx + jj * cell + cell / 2
+            cy = hy + (nrows - 1 - ii) * cell + cell / 2
+            return (cx, cy), vals[ii][jj]
+        p_bl, v_bl = vc(i, j)
+        p_br, v_br = vc(i, j + 1)
+        p_tr, v_tr = vc(i + 1, j + 1)
+        p_tl, v_tl = vc(i + 1, j)
+
+        def side(v):
+            return 1 if v >= level else 0
+        idx = (side(v_bl) << 0) | (side(v_br) << 1) | (side(v_tr) << 2) | (side(v_tl) << 3)
+        # edges: e0=bl-br, e1=br-tr, e2=tr-tl, e3=tl-bl
+        e = {
+            0: _interp(p_bl, p_br, v_bl, v_br, level),
+            1: _interp(p_br, p_tr, v_br, v_tr, level),
+            2: _interp(p_tr, p_tl, v_tr, v_tl, level),
+            3: _interp(p_tl, p_bl, v_tl, v_bl, level),
+        }
+        table = {
+            0:  [],
+            15: [],
+            1:  [(0, 3)], 14: [(0, 3)],
+            2:  [(0, 1)], 13: [(0, 1)],
+            4:  [(1, 2)], 11: [(1, 2)],
+            8:  [(2, 3)], 7:  [(2, 3)],
+            3:  [(1, 3)], 12: [(1, 3)],
+            6:  [(0, 2)], 9:  [(0, 2)],
+            5:  [(0, 1), (2, 3)],
+            10: [(0, 3), (1, 2)],
+        }
+        return [(e[a], e[b]) for a, b in table[idx]]
+
+    contour_levels_kw = [100, 150, 200, 250, 300]  # contour values in kW
+    for level_kw in contour_levels_kw:
+        level = level_kw / 1000.0  # back to MW for comparison with vals
+        if level < vmin or level > vmax:
+            continue
+        for i in range(nrows - 1):
+            for j in range(ncols - 1):
+                for (a, b) in _cell_segments(level, i, j):
+                    c.add(
+                        f'<line x1="{a[0]:.1f}" y1="{a[1]:.1f}" x2="{b[0]:.1f}" y2="{b[1]:.1f}" '
+                        f'stroke="white" stroke-width="2.4" opacity="0.55"/>'
+                    )
+                    c.add(
+                        f'<line x1="{a[0]:.1f}" y1="{a[1]:.1f}" x2="{b[0]:.1f}" y2="{b[1]:.1f}" '
+                        f'stroke="#1a1a1a" stroke-width="1.0" opacity="0.85"/>'
+                    )
+        # label one segment per contour: pick the first segment we find with i in middle
+        labelled = False
+        for i in range(nrows - 1):
+            if labelled:
+                break
+            for j in range(ncols - 1):
+                segs = _cell_segments(level, i, j)
+                if segs:
+                    (a, b) = segs[0]
+                    mx = (a[0] + b[0]) / 2
+                    my = (a[1] + b[1]) / 2
+                    # small white pill behind label
+                    c.add(
+                        f'<rect x="{mx-18:.1f}" y="{my-9:.1f}" width="36" height="14" '
+                        f'fill="white" stroke="#1a1a1a" stroke-width="0.6" rx="2" opacity="0.9"/>'
+                    )
+                    c.add(
+                        f'<text x="{mx:.1f}" y="{my+2:.1f}" text-anchor="middle" '
+                        f'font-size="9.5" font-weight="600" fill="#1a1a1a">{level_kw} kW</text>'
+                    )
+                    labelled = True
+                    break
+
+    # ---- axis labels ----
+    for j, tw in enumerate(tau_w):
+        cx = hx + j * cell + cell / 2
+        c.add(
+            f'<text x="{cx:.1f}" y="{hy + hh + 18:.1f}" text-anchor="middle" '
+            f'font-size="10.5" fill="{COLOR_TEXT_MUT}">{tw:.2f}</text>'
+        )
+    c.add(
+        f'<text x="{hx + hw/2:.1f}" y="{hy + hh + 42:.1f}" text-anchor="middle" '
+        f'font-size="12" font-weight="500" fill="{COLOR_TEXT}">Participation interval width  (τ_max − τ_min)</text>'
+    )
+    for i, ep in enumerate(eta_p):
+        cy = hy + (nrows - 1 - i) * cell + cell / 2
+        c.add(
+            f'<text x="{hx - 8:.1f}" y="{cy + 3:.1f}" text-anchor="end" '
+            f'font-size="10.5" fill="{COLOR_TEXT_MUT}">{ep:.2f}</text>'
+        )
+    cx_lbl = hx - 80
+    cy_lbl = hy + hh / 2
+    c.add(
+        f'<text x="{cx_lbl:.1f}" y="{cy_lbl:.1f}" text-anchor="middle" '
+        f'font-size="12" font-weight="500" fill="{COLOR_TEXT}" '
+        f'transform="rotate(-90 {cx_lbl:.1f} {cy_lbl:.1f})">Peak-period tariff fluctuation  η_peak</text>'
+    )
+
+    # ---- color bar ----
+    cb_x = hx + hw + 50
+    cb_y = hy + 10
+    cb_w = 22
+    cb_h = hh - 20
+    steps = 80
+    for k in range(steps):
+        t = k / (steps - 1)
+        v = vmin + t * (vmax - vmin)
+        c.add(
+            f'<rect x="{cb_x:.1f}" y="{cb_y + (1-t)*cb_h - cb_h/steps:.2f}" '
+            f'width="{cb_w}" height="{cb_h/steps + 0.6:.2f}" fill="{color(v)}"/>'
+        )
+    cb_ticks = nice_ticks(vmin, vmax, 6)
+    for v in cb_ticks:
+        if v < vmin or v > vmax:
+            continue
+        ty = cb_y + (1 - (v - vmin) / (vmax - vmin)) * cb_h
+        c.add(
+            f'<line x1="{cb_x + cb_w:.1f}" y1="{ty:.1f}" x2="{cb_x + cb_w + 4:.1f}" y2="{ty:.1f}" '
+            f'stroke="{COLOR_TEXT}" stroke-width="0.8"/>'
+        )
+        c.add(
+            f'<text x="{cb_x + cb_w + 8:.1f}" y="{ty + 3.5:.1f}" '
+            f'font-size="10" fill="{COLOR_TEXT_MUT}">{v*1000:.0f} kW</text>'
+        )
+    c.add(
+        f'<text x="{cb_x + cb_w/2:.1f}" y="{cb_y - 10:.1f}" text-anchor="middle" '
+        f'font-size="10.5" fill="{COLOR_TEXT}" font-weight="500">ΔP width</text>'
+    )
+
+    # ---- operating-point markers ----
+    def nearest(arr, v):
+        return min(range(len(arr)), key=lambda i: abs(arr[i] - v))
+
+    op_points = [
+        ("Summer",   0.30, 0.25, "#fff8f0", "#d1495b"),
+        ("Winter",   0.20, 0.20, "#fff8f0", "#2e6f95"),
+        ("Shoulder", 0.20, 0.10, "#fff8f0", "#669973"),
+    ]
+    for name, tw, ep, halo, edge in op_points:
+        j_b = nearest(tau_w, tw)
+        i_b = nearest(eta_p, ep)
+        cx_b = hx + j_b * cell + cell / 2
+        cy_b = hy + (nrows - 1 - i_b) * cell + cell / 2
+        c.add(
+            f'<circle cx="{cx_b:.1f}" cy="{cy_b:.1f}" r="14" fill="none" '
+            f'stroke="#ffffff" stroke-width="3"/>'
+        )
+        c.add(
+            f'<circle cx="{cx_b:.1f}" cy="{cy_b:.1f}" r="14" fill="none" '
+            f'stroke="{edge}" stroke-width="2"/>'
+        )
+        lx = cx_b + 22
+        ly = cy_b + 3.5
+        c.add(
+            f'<rect x="{lx-3:.1f}" y="{ly-10:.1f}" width="{len(name)*7+6:.0f}" height="15" '
+            f'fill="{halo}" stroke="{edge}" stroke-width="1" rx="3" opacity="0.95"/>'
+        )
+        c.add(
+            f'<text x="{lx:.1f}" y="{ly:.1f}" font-size="10.5" font-weight="600" '
+            f'fill="{edge}">{name}</text>'
+        )
+
+    caption(c, 50, H - 65, W - 100,
+            "Each cell reports the proposed-method 24-h interval width at the Summer-typical-day peak hour, in kW, "
+            "as both design dials are swept independently. Thin black iso-width curves overlay the heat map and turn "
+            "it into a usable design chart: for any target interval width, the corresponding curve traces the locus "
+            "of (τ-width, η_peak) pairs that achieve it. The three labelled circles mark the typical-day operating "
+            "points; their relative position confirms that tariff η carries the larger leverage.")
+
+    (FIG_DIR / "figure_5_heatmap.svg").write_text(c.render())
+    print("[ok] figure_5_heatmap.svg")
+
+
 if __name__ == "__main__":
     figure_2()
-    figure_3()
     figure_4()
+    figure_5()
     print("\nDone. Output:")
     for f in sorted(FIG_DIR.glob("*.svg")):
         print(f"  {f.name}: {f.stat().st_size:,} bytes")

@@ -97,10 +97,30 @@ All numbers below come from the calibrated simulation in `src/simulation.py`
 
 ---
 
+## Figure-pack changes
+
+- **Figure 3 (sensitivity tornado)** has been removed from the figure pack
+  *and* from the paper. The numerical content is preserved by **Table IV**
+  in the body and by the rewritten sensitivity narrative. The
+  "[Insert Figure 3 here]" placement marker and the original Fig. 3 caption
+  paragraph have been deleted from the document.
+- **Figure 4 (convergence)** is kept as a single-panel chart; the original
+  right-side "Filter rejection breakdown by scenario" panel has been
+  removed.
+- **Figure 5 (heat map of width vs design dials)** is retained and
+  optimised: it now overlays iso-width contour curves (100 / 150 / 200 /
+  250 / 300 kW) computed by marching-squares, and labels the three
+  typical-day operating points (Summer / Winter / Shoulder). The result
+  is a usable design lookup chart, not just a value table.
+
+Final figure pack: **Figure 2**, **Figure 4**, **Figure 5**
+(the gap at Figure 3 in the paper is intentional and documented above).
+
 ## What was NOT changed
 
 - Title, abstract, keywords, introduction, related-work table, model equations
   (1)–(8), Table I (qualitative comparison), Table II (scenario parameters),
+  Table IV (sensitivity, retained even after Fig. 3 was dropped), and the
   reference list. All scientific positioning is unchanged; only the
-  case-study numerical results and the surrounding discussion were updated
-  to reflect the realistic, calibrated simulation.
+  case-study numerical results, the surrounding discussion, and the
+  sensitivity figure were modified.

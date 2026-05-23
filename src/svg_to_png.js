@@ -5,8 +5,8 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
 
 const FIGS = [
   { svg: 'figures/figure_2_envelopes.svg',   png: 'figures/figure_2_envelopes.png',   w: 1280, h: 880 },
-  { svg: 'figures/figure_3_sensitivity.svg', png: 'figures/figure_3_sensitivity.png', w: 1100, h: 640 },
   { svg: 'figures/figure_4_convergence.svg', png: 'figures/figure_4_convergence.png', w:  900, h: 580 },
+  { svg: 'figures/figure_5_heatmap.svg',     png: 'figures/figure_5_heatmap.png',     w: 1080, h: 780 },
 ];
 
 (async () => {
