@@ -187,6 +187,14 @@ PARAGRAPH_REWRITES = [
         "exhibits an approximately linear response to either of the two design dials within the "
         "studied ranges, with the tariff fluctuation coefficient acting as the dominant lever."
     ),
+    # Fig 3 caption (was Fig 4) -- figure is now single panel, drop the (left)/(right)
+    (
+        "Sampling convergence: peak-hour interval width as a function of Latin Hypercube sample size N (left)",
+        "Sample-size convergence of the peak-hour DR response interval width for the Summer "
+        "typical day: mean across eight random seeds (solid line), inter-quartile spread "
+        "(dark band), and full min-max envelope (light band), as a function of the Latin "
+        "Hypercube sample size N."
+    ),
     # Case study setup -- mention realistic synthesised inputs
     (
         "the base load profile is a typical residential daily curve with a peak demand of approximately 0.85 MW",
@@ -208,6 +216,53 @@ PARAGRAPH_REWRITES = [
         "the cross-elasticity matrix uses a forward-asymmetric exponential decay that models the "
         "real-world tendency of households to defer load rather than to pre-empt it."
     ),
+]
+
+# ---------------------------------------------------------------------------
+# Plain text-in-paragraph substitutions (no paragraph rewrite, no anchor)
+# ---------------------------------------------------------------------------
+GLOBAL_TEXT_REPLACEMENTS = [
+    # Renumber: convergence figure was [Insert Figure 4 here] -> now Figure 3
+    ("[Insert Figure 4 here]", "[Insert Figure 3 here]"),
+]
+
+# ---------------------------------------------------------------------------
+# Content to append before the "Conclusion" heading
+#   Renamed plan:
+#       Fig. 3 = sample-size convergence (was Fig. 4)
+#       Fig. 4 = design-dial heat map   (was Fig. 5, new in paper)
+#   The block below is the new IV.E subsection that introduces Fig. 4.
+# ---------------------------------------------------------------------------
+NEW_SUBSECTION_BLOCK = [
+    ("heading2", "Design-Dial Surface as a Lookup Chart"),
+    ("body",
+     "Section IV-B examined the two design dials -- participation interval and tariff "
+     "fluctuation coefficient -- one at a time. To turn those findings into an operational "
+     "tool, the peak-hour interval width is now plotted as a two-dimensional surface in "
+     "(participation-interval width, peak-period tariff fluctuation) space. For each grid "
+     "point the proposed method is rerun with the Summer-typical-day base load and tariff "
+     "structure, and the resulting peak-hour interval width is recorded. The surface "
+     "therefore represents what an operator would observe if both bounds were dialled "
+     "jointly, including any coupling that the one-at-a-time view cannot capture."),
+    ("body",
+     "Fig. 4 shows the resulting heat map together with five iso-width contour curves at "
+     "100, 150, 200, 250, and 300 kW. Two observations stand out. First, the contours are "
+     "almost horizontal at low values of eta and bend upward at high values, which provides "
+     "a graphical confirmation of the sensitivity ranking in Table IV: the tariff "
+     "fluctuation coefficient is the dominant driver, and the participation rate becomes a "
+     "relevant lever only after eta is already large. Second, the three labelled circles "
+     "show where the Summer, Winter, and Shoulder operating points sit on the surface; "
+     "their vertical separation is much larger than their horizontal separation, again "
+     "reflecting the eta-dominated structure. The surface is therefore usable as a design "
+     "lookup chart: for any target interval width, the corresponding contour traces the "
+     "locus of (tau-width, eta) pairs that achieve it, and the operator can pick the pair "
+     "that is cheapest to actuate in the local regulatory environment."),
+    ("placeholder", "[Insert Figure 4 here]"),
+    ("caption",
+     "Peak-hour interval width (kW) at the Summer typical-day peak hour as a joint "
+     "function of the participation-interval width and the peak-period tariff fluctuation "
+     "coefficient eta; iso-width contours overlaid and the three typical-day operating "
+     "points marked."),
 ]
 
 
@@ -367,6 +422,71 @@ def main():
         parent.remove(target)
         del_count += 1
     print(f"[info] {del_count}/{len(PARAGRAPH_DELETIONS)} paragraph deletions applied")
+
+    # --- Apply global text replacements (any number of hits, all paragraphs) ---
+    glob_count = 0
+    for old, new in GLOBAL_TEXT_REPLACEMENTS:
+        for p in root.iter(NS_W + "p"):
+            text = get_paragraph_text(p)
+            if old in text:
+                if replace_in_paragraph_keep_runs(p, old, new):
+                    glob_count += 1
+    print(f"[info] {glob_count} global text replacement(s) applied")
+
+    # --- Insert the new IV.E subsection just before the "Conclusion" heading ---
+    # locate Conclusion paragraph (exact short text)
+    import copy as _copy
+    parent_of = {child: parent for parent in root.iter() for child in parent}
+    conclusion_p = None
+    for p in root.iter(NS_W + "p"):
+        text = get_paragraph_text(p).strip()
+        if text == "Conclusion":
+            conclusion_p = p
+            break
+    if conclusion_p is None:
+        print("[warn] could not find Conclusion heading; new subsection not inserted")
+    else:
+        conclusion_parent = parent_of[conclusion_p]
+        # find the index of Conclusion within its parent
+        siblings = list(conclusion_parent)
+        cidx = siblings.index(conclusion_p)
+
+        # Collect template paragraphs to clone for each style we need:
+        #   heading2  -> use the existing "Sampling Convergence and Rejection Behaviour" heading
+        #   body      -> use the body-text paragraph right after that heading
+        #   placeholder -> use the existing "[Insert Figure 3 here]" paragraph (just renumbered)
+        #   caption   -> use the existing convergence figure caption paragraph
+        templates = {}
+        for p in root.iter(NS_W + "p"):
+            t = get_paragraph_text(p).strip()
+            if t == "Sampling Convergence and Rejection Behaviour" and "heading2" not in templates:
+                templates["heading2"] = p
+            elif t == "[Insert Figure 3 here]" and "placeholder" not in templates:
+                templates["placeholder"] = p
+            elif t.startswith("Sample-size convergence of the peak-hour DR response") and "caption" not in templates:
+                templates["caption"] = p
+
+        # find a generic body paragraph: the rewritten convergence narrative starts with
+        # "The envelope is decided by extreme samples"
+        for p in root.iter(NS_W + "p"):
+            t = get_paragraph_text(p)
+            if t.startswith("The envelope is decided by extreme samples"):
+                templates["body"] = p
+                break
+
+        missing = [k for k in ("heading2", "body", "placeholder", "caption") if k not in templates]
+        if missing:
+            print(f"[warn] missing templates for: {missing}; new subsection not inserted")
+        else:
+            inserted = 0
+            for kind, text in NEW_SUBSECTION_BLOCK:
+                tmpl = templates[kind]
+                new_p = _copy.deepcopy(tmpl)
+                set_paragraph_text(new_p, text)
+                conclusion_parent.insert(cidx, new_p)
+                cidx += 1
+                inserted += 1
+            print(f"[info] inserted {inserted} new paragraphs before Conclusion")
 
     # --- Serialize back ---
     new_xml = b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + ET.tostring(root, encoding="utf-8")

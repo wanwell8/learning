@@ -97,24 +97,46 @@ All numbers below come from the calibrated simulation in `src/simulation.py`
 
 ---
 
-## Figure-pack changes
+## Figure-pack and paper renumbering
 
-- **Figure 3 (sensitivity tornado)** has been removed from the figure pack
-  *and* from the paper. The numerical content is preserved by **Table IV**
-  in the body and by the rewritten sensitivity narrative. The
-  "[Insert Figure 3 here]" placement marker and the original Fig. 3 caption
-  paragraph have been deleted from the document.
-- **Figure 4 (convergence)** is kept as a single-panel chart; the original
-  right-side "Filter rejection breakdown by scenario" panel has been
-  removed.
-- **Figure 5 (heat map of width vs design dials)** is retained and
-  optimised: it now overlays iso-width contour curves (100 / 150 / 200 /
+Paper figure numbering after the latest revision (no gaps):
+
+| Paper figure | Asset filename                | Description                                                  |
+|--------------|-------------------------------|--------------------------------------------------------------|
+| Fig. 1       | (not generated here)          | Topology of the modified IEEE 33-bus test system             |
+| Fig. 2       | `figure_2_envelopes.svg/png`  | 24-hour DR response interval envelopes                       |
+| Fig. 3       | `figure_4_convergence.svg/png`| Sample-size convergence of the peak-hour interval width      |
+| Fig. 4       | `figure_5_heatmap.svg/png`    | Joint design-dial heat map with iso-width contours           |
+
+(Asset filenames are kept at their established names — `figure_4_*` and
+`figure_5_*` — so prior commit history stays readable. The paper
+references them as Fig. 3 and Fig. 4 respectively.)
+
+- **Sensitivity tornado** has been removed from both the figure pack and the
+  paper. The numerical content is preserved by **Table IV** in the body and
+  by the rewritten sensitivity narrative.
+- **Convergence figure** is now a single-panel chart; the original
+  right-side "Filter rejection breakdown by scenario" panel was removed,
+  and the figure caption was rewritten accordingly to drop the
+  `(left)/(right)` language.
+- **Heat map** now overlays iso-width contour curves (100 / 150 / 200 /
   250 / 300 kW) computed by marching-squares, and labels the three
-  typical-day operating points (Summer / Winter / Shoulder). The result
-  is a usable design lookup chart, not just a value table.
+  typical-day operating points (Summer / Winter / Shoulder).
 
-Final figure pack: **Figure 2**, **Figure 4**, **Figure 5**
-(the gap at Figure 3 in the paper is intentional and documented above).
+## New subsection in the paper
+
+A new subsection **IV-E "Design-Dial Surface as a Lookup Chart"** has
+been inserted between IV-D (Sampling Convergence) and V (Conclusion).
+It contains:
+
+1. A motivation paragraph explaining the move from one-at-a-time
+   sensitivity (Section IV-B + Table IV) to a joint two-dimensional view.
+2. A reading paragraph that points the reviewer at the iso-width
+   contours, the operating-point markers, and the eta-dominated shape
+   of the surface, and frames the chart as an operator-usable lookup
+   tool rather than a value table.
+3. The `[Insert Figure 4 here]` placeholder.
+4. The Fig. 4 caption.
 
 ## What was NOT changed
 
