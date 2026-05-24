@@ -355,7 +355,7 @@ def figure_5():
     eta_p = data["eta_peaks"]
     vals = data["values"]   # values[i_eta][j_tau]
 
-    W, H = 1080, 780
+    W, H = 1200, 780
     c = Canvas(W, H)
     title_block(
         c, 50, 38,
@@ -458,11 +458,16 @@ def figure_5():
         }
         return [(e[a], e[b]) for a, b in table[idx]]
 
+    # Draw contour lines first, and remember the rightmost exit point per level
+    # so we can label them out in the right margin instead of on top of cell numbers.
     contour_levels_kw = [100, 150, 200, 250, 300]  # contour values in kW
+    contour_exits: dict[int, tuple[float, float]] = {}
     for level_kw in contour_levels_kw:
         level = level_kw / 1000.0  # back to MW for comparison with vals
         if level < vmin or level > vmax:
             continue
+        max_x = -1.0
+        max_pt = None
         for i in range(nrows - 1):
             for j in range(ncols - 1):
                 for (a, b) in _cell_segments(level, i, j):
@@ -474,28 +479,41 @@ def figure_5():
                         f'<line x1="{a[0]:.1f}" y1="{a[1]:.1f}" x2="{b[0]:.1f}" y2="{b[1]:.1f}" '
                         f'stroke="#1a1a1a" stroke-width="1.0" opacity="0.85"/>'
                     )
-        # label one segment per contour: pick the first segment we find with i in middle
-        labelled = False
-        for i in range(nrows - 1):
-            if labelled:
-                break
-            for j in range(ncols - 1):
-                segs = _cell_segments(level, i, j)
-                if segs:
-                    (a, b) = segs[0]
-                    mx = (a[0] + b[0]) / 2
-                    my = (a[1] + b[1]) / 2
-                    # small white pill behind label
-                    c.add(
-                        f'<rect x="{mx-18:.1f}" y="{my-9:.1f}" width="36" height="14" '
-                        f'fill="white" stroke="#1a1a1a" stroke-width="0.6" rx="2" opacity="0.9"/>'
-                    )
-                    c.add(
-                        f'<text x="{mx:.1f}" y="{my+2:.1f}" text-anchor="middle" '
-                        f'font-size="9.5" font-weight="600" fill="#1a1a1a">{level_kw} kW</text>'
-                    )
-                    labelled = True
-                    break
+                    # track the rightmost contour endpoint so we know where to anchor the label
+                    for pt in (a, b):
+                        if pt[0] > max_x:
+                            max_x = pt[0]
+                            max_pt = pt
+        if max_pt is not None:
+            contour_exits[level_kw] = max_pt
+
+    # Labels live in the right-side gutter between heatmap and colorbar.
+    label_x  = hx + hw + 8      # rect-left anchor, just past heatmap right edge
+    label_w  = 38
+    used_ys: list[float] = []
+    # Sort levels by descending y (low η at bottom of heat map) so collision-avoidance pushes upward.
+    for level_kw in sorted(contour_exits, key=lambda k: -contour_exits[k][1]):
+        ex, ey = contour_exits[level_kw]
+        ly = ey
+        # nudge so labels never collide with each other (min 16 px apart)
+        for prev in used_ys:
+            if abs(ly - prev) < 16:
+                ly = prev - 18 if ly <= prev else prev + 18
+        used_ys.append(ly)
+        # leader from contour exit to label
+        c.add(
+            f'<line x1="{ex:.1f}" y1="{ey:.1f}" x2="{label_x - 2:.1f}" y2="{ly:.1f}" '
+            f'stroke="#1a1a1a" stroke-width="0.7" opacity="0.7"/>'
+        )
+        # white pill label
+        c.add(
+            f'<rect x="{label_x:.1f}" y="{ly-9:.1f}" width="{label_w}" height="16" '
+            f'fill="white" stroke="#1a1a1a" stroke-width="0.7" rx="3" opacity="0.95"/>'
+        )
+        c.add(
+            f'<text x="{label_x + label_w/2:.1f}" y="{ly+2:.1f}" text-anchor="middle" '
+            f'font-size="9.5" font-weight="600" fill="#1a1a1a">{level_kw} kW</text>'
+        )
 
     # ---- axis labels ----
     for j, tw in enumerate(tau_w):
@@ -523,7 +541,7 @@ def figure_5():
     )
 
     # ---- color bar ----
-    cb_x = hx + hw + 50
+    cb_x = hx + hw + 70   # extra margin to leave room for the contour-label gutter
     cb_y = hy + 10
     cb_w = 22
     cb_h = hh - 20
@@ -575,15 +593,20 @@ def figure_5():
             f'<circle cx="{cx_b:.1f}" cy="{cy_b:.1f}" r="14" fill="none" '
             f'stroke="{edge}" stroke-width="2"/>'
         )
+        # generously sized label rect (Arial at 10.5 pt needs ~7.5 px / char;
+        # the previous estimate of 7 px / char left the trailing character of
+        # "Summer" / "Shoulder" outside the white box in some renderers).
+        rect_w = len(name) * 8 + 18
+        rect_h = 17
         lx = cx_b + 22
-        ly = cy_b + 3.5
+        ly = cy_b
         c.add(
-            f'<rect x="{lx-3:.1f}" y="{ly-10:.1f}" width="{len(name)*7+6:.0f}" height="15" '
+            f'<rect x="{lx:.1f}" y="{ly - rect_h/2:.1f}" width="{rect_w}" height="{rect_h}" '
             f'fill="{halo}" stroke="{edge}" stroke-width="1" rx="3" opacity="0.95"/>'
         )
         c.add(
-            f'<text x="{lx:.1f}" y="{ly:.1f}" font-size="10.5" font-weight="600" '
-            f'fill="{edge}">{name}</text>'
+            f'<text x="{lx + rect_w/2:.1f}" y="{ly + 4:.1f}" text-anchor="middle" '
+            f'font-size="10.5" font-weight="600" fill="{edge}">{name}</text>'
         )
 
     caption(c, 50, H - 65, W - 100,
