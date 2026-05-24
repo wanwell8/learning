@@ -44,13 +44,50 @@ NEW_PARA_32 = (
     "built into the candidate-trajectory filter rather than added as a downstream check."
 )
 
-# -- New text for Fig. 2 caption (paragraph [77]) -- adds the probabilistic curve
-NEW_FIG2_CAPTION = (
+# -- New text for Fig. 1 caption (was Fig. 2). The figure shows envelopes for the three typical days.
+NEW_FIG1_CAPTION = (
     "Comparison of 24-hour DR response interval envelopes at node 30 for the three "
     "typical days under the proposed, unconstrained, fixed-parameter, and probabilistic "
     "formulations; the right inset compares peak-hour interval widths across the four "
     "methods."
 )
+
+# -- New text for the case-study setup paragraph: drops the topology reference
+#    (the IEEE 33-bus topology figure is no longer in the paper) and renumbers Fig. 2 -> Fig. 1.
+NEW_CASE_SETUP = (
+    "The proposed model is evaluated on a modified IEEE 33-bus distribution system in "
+    "which four tie lines have been added so that the network supports both radial and "
+    "meshed operation. The system base voltage is 12.66 kV and the base power is 10 MVA. "
+    "The DR resource is attached at node 30, where the base load profile is a "
+    "synthesised residential daily curve that captures the morning shoulder around "
+    "07:00-09:00, a midday plateau driven by air-conditioning in summer, a sharp "
+    "evening peak with asymmetric ramp-on/ramp-off, and a small post-peak rebound; the "
+    "summer peak demand is approximately 0.85 MW. Three typical-day scenarios are "
+    "defined to represent summer peak, winter peak, and shoulder-season conditions, "
+    "each with its own base load profile, reference tariff curve, and "
+    "participation/tariff bounds. The annual day-count weights are 90, 90, and 185, "
+    "respectively. The single-period magnitude cap is set to 30 percent of the base load "
+    "and the cycle-energy tolerance is 5 percent of the cumulative absolute response. "
+    "The Latin Hypercube sample size [14] is N = 2000, and the participation rate "
+    "within [tau_min, tau_max] is drawn from a Beta(2, 2) shape so that few households "
+    "sit at the extremes of the interval; the cross-elasticity matrix uses a "
+    "forward-asymmetric exponential decay that models the real-world tendency of "
+    "households to defer load rather than to pre-empt it."
+)
+
+# -- Inline figure-reference renumbering (applied to every paragraph)
+INLINE_TEXT_REPLACEMENTS = [
+    # the topology figure is gone, so Fig 2/3/4 become Fig 1/2/3 throughout
+    ("Figure 2", "Figure 1"),
+    ("Fig. 2",  "Fig. 1"),
+    ("Fig 2",   "Fig 1"),
+    ("Figure 3", "Figure 2"),
+    ("Fig. 3",  "Fig. 2"),
+    ("Fig 3",   "Fig 2"),
+    ("Figure 4", "Figure 3"),
+    ("Fig. 4",  "Fig. 3"),
+    ("Fig 4",   "Fig 3"),
+]
 
 
 def get_paragraph_text(p_elem) -> str:
@@ -96,16 +133,27 @@ def main():
     else:
         print("[warn] could not find Table-I-intro paragraph")
 
-    # --- (2) Fix Fig 2 caption ---
+    # --- (2) Fix the figure caption (renumbered to Fig. 1: envelopes) ---
     for ch in children:
         if ch.tag == NS_W + "p":
             text = get_paragraph_text(ch)
             if text.startswith("Comparison of 24-hour DR response interval envelopes"):
-                set_paragraph_text(ch, NEW_FIG2_CAPTION)
+                set_paragraph_text(ch, NEW_FIG1_CAPTION)
                 n_changes["rewrites"] += 1
                 break
     else:
-        print("[warn] could not find Fig 2 caption paragraph")
+        print("[warn] could not find envelopes-figure caption paragraph")
+
+    # --- (2b) Rewrite the case-study setup paragraph to drop the missing topology figure ---
+    for ch in children:
+        if ch.tag == NS_W + "p":
+            text = get_paragraph_text(ch)
+            if text.startswith("The proposed model is evaluated on a modified IEEE 33-bus"):
+                set_paragraph_text(ch, NEW_CASE_SETUP)
+                n_changes["rewrites"] += 1
+                break
+    else:
+        print("[warn] could not find case-study setup paragraph")
 
     # --- (3) Delete Table I: caption paragraph + the <w:tbl> element ---
     to_delete = []
@@ -130,6 +178,19 @@ def main():
     if n_changes["deletions"] == 0:
         print("[warn] Table I not found / not deleted")
 
+    # --- (4) Inline figure-reference renumbering (Fig 2/3/4 -> Fig 1/2/3) ---
+    n_changes["renumbered"] = 0
+    for p in body.iter(NS_W + "p"):
+        text = get_paragraph_text(p)
+        if not text:
+            continue
+        new_text = text
+        for old, new in INLINE_TEXT_REPLACEMENTS:
+            new_text = new_text.replace(old, new)
+        if new_text != text:
+            set_paragraph_text(p, new_text)
+            n_changes["renumbered"] += 1
+
     # --- Serialize back ---
     new_xml = b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + ET.tostring(root, encoding="utf-8")
     files["word/document.xml"] = new_xml
@@ -138,8 +199,9 @@ def main():
         for name, payload in files.items():
             zout.writestr(name, payload)
 
-    print(f"[info] paragraph rewrites: {n_changes['rewrites']}")
-    print(f"[info] elements deleted:   {n_changes['deletions']}")
+    print(f"[info] paragraph rewrites:           {n_changes['rewrites']}")
+    print(f"[info] elements deleted:             {n_changes['deletions']}")
+    print(f"[info] paragraphs with renumbering:  {n_changes['renumbered']}")
     print(f"[ok] wrote {OUT_DOCX} ({OUT_DOCX.stat().st_size:,} bytes)")
 
 
