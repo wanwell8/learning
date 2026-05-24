@@ -89,6 +89,45 @@ INLINE_TEXT_REPLACEMENTS = [
     ("Fig 4",   "Fig 3"),
 ]
 
+# -- Targeted fixes for the 6 review issues identified in the final read-through
+TARGETED_TEXT_FIXES = [
+    # Issue 1: Section IV-B examined the two design dials -- wrong, that was IV-C (Sensitivity Analysis)
+    ("Section IV-B examined the two design dials",
+     "Section IV-C examined the two design dials"),
+
+    # Issue 4: at the start of a sentence in the heat-map paragraph, IEEE style
+    # uses the spelled-out "Figure" -- match the [101] "Figure 1 illustrates" style.
+    # By the time this fix runs, INLINE_TEXT_REPLACEMENTS has already renumbered
+    # Fig. 4 -> Fig. 3, so we anchor on the post-renumbering text.
+    ("Fig. 3 shows the resulting heat map",
+     "Figure 3 shows the resulting heat map"),
+
+    # Issue 6: "hosting capacity of distributed renewables" is an awkward
+    # construction (hosting capacity is a property of the network)
+    ("improves the hosting capacity of distributed renewables",
+     "improves the network's hosting capacity for distributed renewables"),
+]
+
+# -- Issue 5: replace Latin transliterations of Greek letters with the real
+# symbol, with word boundaries so we never touch words like "beta" inside
+# "Beta(2,2)" (capital B) or "plateau"/"status"/etc.
+import re as _re
+
+GREEK_REPLACEMENTS_RE = [
+    # Specific multi-character patterns first (so they win over the catch-alls)
+    (_re.compile(r'\[tau_min, tau_max\]'), '[τmin, τmax]'),
+    (_re.compile(r'\btau_min\b'),          'τmin'),
+    (_re.compile(r'\btau_max\b'),          'τmax'),
+    (_re.compile(r'\btau in \['),          'τ ∈ ['),     # set membership notation
+    (_re.compile(r'\btau\b'),              'τ'),
+    (_re.compile(r'\beta \(peak\)'),       'η (peak)'),
+    (_re.compile(r'\beta \(off-peak\)'),   'η (off-peak)'),
+    (_re.compile(r'\beta\(t\)'),           'η(t)'),
+    (_re.compile(r'\blow-eta\b'),          'low-η'),
+    (_re.compile(r'\beta\s*=\s*'),         'η = '),       # eta = 0.25 etc.
+    (_re.compile(r'\beta\b'),              'η'),
+]
+
 
 def get_paragraph_text(p_elem) -> str:
     return "".join((t.text or "") for t in p_elem.iter(NS_W + "t"))
@@ -191,6 +230,60 @@ def main():
             set_paragraph_text(p, new_text)
             n_changes["renumbered"] += 1
 
+    # --- (5) Issue 2: rewrite the Table II descriptor paragraph ---
+    # "tightest in the shoulder season" was misleading because Winter and
+    # Shoulder both have a width-0.20 participation interval; only the values
+    # are lower in Shoulder. Restate as "sit lowest".
+    n_changes["issue2"] = 0
+    for p in body.iter(NS_W + "p"):
+        text = get_paragraph_text(p)
+        if "tightest in the shoulder season" in text:
+            new = text.replace(
+                "The participation bounds are tightest in the shoulder season, "
+                "where users have lower incentives to respond, and widest in the summer",
+                "The participation bounds sit lowest in the shoulder season, "
+                "where users have lower incentives to respond, and are widest in the summer",
+            )
+            if new != text:
+                set_paragraph_text(p, new)
+                n_changes["issue2"] += 1
+            break
+
+    # --- (6) Issue 6 + Issue 1 + Issue 4 (targeted text fixes) ---
+    n_changes["targeted"] = 0
+    for old, new in TARGETED_TEXT_FIXES:
+        for p in body.iter(NS_W + "p"):
+            text = get_paragraph_text(p)
+            if old in text:
+                set_paragraph_text(p, text.replace(old, new))
+                n_changes["targeted"] += 1
+                break
+
+    # --- (7) Issue 5: Latin "tau" / "eta" -> Greek "τ" / "η" ---
+    n_changes["greek"] = 0
+    for p in body.iter(NS_W + "p"):
+        text = get_paragraph_text(p)
+        if not text:
+            continue
+        new_text = text
+        for pat, repl in GREEK_REPLACEMENTS_RE:
+            new_text = pat.sub(repl, new_text)
+        if new_text != text:
+            set_paragraph_text(p, new_text)
+            n_changes["greek"] += 1
+
+    # --- (8) Issue 3: terminal period on reference [15] ---
+    n_changes["ref_dot"] = 0
+    for p in body.iter(NS_W + "p"):
+        text = get_paragraph_text(p)
+        # match by the distinctive end of Bertsimas & Sim entry, then ensure trailing "."
+        if 'D. Bertsimas and M. Sim' in text and "The price of robustness" in text:
+            if text.rstrip().endswith("2004"):
+                new = text.rstrip() + "."
+                set_paragraph_text(p, new)
+                n_changes["ref_dot"] += 1
+            break
+
     # --- Serialize back ---
     new_xml = b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + ET.tostring(root, encoding="utf-8")
     files["word/document.xml"] = new_xml
@@ -202,6 +295,10 @@ def main():
     print(f"[info] paragraph rewrites:           {n_changes['rewrites']}")
     print(f"[info] elements deleted:             {n_changes['deletions']}")
     print(f"[info] paragraphs with renumbering:  {n_changes['renumbered']}")
+    print(f"[info] Issue 2 fixes:                {n_changes['issue2']}")
+    print(f"[info] targeted text fixes (1,4,6):  {n_changes['targeted']}")
+    print(f"[info] Greek-letter replacements:    {n_changes['greek']}")
+    print(f"[info] Issue 3 ref-period fixes:     {n_changes['ref_dot']}")
     print(f"[ok] wrote {OUT_DOCX} ({OUT_DOCX.stat().st_size:,} bytes)")
 
 
