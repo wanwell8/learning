@@ -1,0 +1,18 @@
+{
+  "eta_proposed": 0.15,
+  "proposed": {
+    "mean_violations": 0.725,
+    "mean_max_dev": 0.03545082228806225,
+    "mean_replans": 17.025
+  },
+  "no_replan": {
+    "mean_violations": 1.075,
+    "mean_max_dev": 0.04308764515522334,
+    "mean_replans": 0.0
+  },
+  "periodic": {
+    "mean_violations": 0.95,
+    "mean_max_dev": 0.0410192756325994,
+    "mean_replans": 23.0
+  }
+}
