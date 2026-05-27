@@ -460,13 +460,230 @@ add(
     blank(),
 )
 
-# References
+
+
+# ===== SECTION 6: FAULT EXTENSION =====
+add(hr(), heading('6  故障情景下的电压调节扩展分析', lv=1))
+add(
+    heading('6.1  故障情景对三阶段框架的影响', lv=2),
+    bp('三阶段框架基于LinDistFlow线性化模型，假设网络拓扑固定，电压灵敏度矩阵S(t)在整个调度周期内平滑演化。当配电网发生N-1故障（支路开断）时，拓扑结构产生离散跳变，对框架三个阶段均造成本质性冲击：（a）事前预规划阶段——正常拓扑T_0下的优化结果在故障拓扑T^(k)下可能严重越限，需补充N-1预想故障约束；（b）事中RLS更新阶段——平滑递推假设S(t)连续变化，拓扑突变导致灵敏度矩阵离散跳变，RLS追踪失效；（c）事件触发重规划阶段——当前触发指标g(t)仅感知约束趋紧度，无法直接感知故障，故障信号应作为独立触发条件补充。结合28篇文献中相关工作，本节从四个维度梳理故障场景扩展：拓扑切换（文献6）、FIDVR抑制与PV低穿（文献15、23）、预规划N-1安全约束（文献3、20）、灵敏度矩阵重辨识（文献22扩展）。'),
+)
+fault_impact_tbl = [
+    ['框架阶段',   '正常工况',          '故障工况冲击',       '扩展方案',         '引用文献'],
+    ['事前预规划', 'LP在T0下优化P_h',   '故障拓扑下约束失效', 'N-1安全约束(F9)', '文献3/20'],
+    ['事中RLS更新','S(t)平滑递推',      '拓扑突变S(t)跳变',   '突变检测+重辨识',  '文献22'],
+    ['事件触发',   'g(t)>=eta感知趋紧', '无法感知故障信号',   '新增故障触发条件', '文献6'],
+    ['重规划',     'T0下水电再调度',    'T^(k)约束结构改变',  '基于T^(k)重建LP',  '文献15/23'],
+]
+add(comp_table(fault_impact_tbl), blank())
+
+# --- 6.2 SOP ---
+add(
+    heading('6.2  拓扑切换软开关（SOP）辅助运行——文献6', lv=2),
+    bp('软开关（Soft Open Point, SOP）是基于背靠背变流器的电力电子装置，能在不切断电路的前提下实现拓扑柔性切换，故障时将受影响区域无缝转接至健康馈线。文献6（Wang et al., Modern Power Systems 2024）提出SOP辅助ADN实时协同运行方法，在拓扑切换后维持全网电压合格。'),
+    bp('SOP功率平衡约束（节点i与节点j间）：'),
+)
+sop_f1 = (msub(mr('P'), mr('SOP,ij')) + mr(' + ') +
+           msub(mr('P'), mr('SOP,ji')) + mr(' + ') +
+           msub(mr('P'), mr('loss,SOP')) + mr(' = 0'))
+add(
+    eq_tbl(sop_f1, '(F1)'),
+    bp('式中：P_SOP,ij 和 P_SOP,ji 为SOP两侧注入节点i、j的有功功率；P_loss,SOP 为变流器内部损耗，通常建模为二次损耗 a*P_SOP,ij^2 + b。'),
+    bp('SOP视在功率容量约束（功率圆约束）：'),
+)
+sop_f2 = (msup(msub(mr('P'), mr('SOP,ij')), mr('2')) + mr(' + ') +
+           msup(msub(mr('Q'), mr('SOP,i')), mr('2')) + mr(' <= ') +
+           msup(msub(mr('S'), mr('SOP,max')), mr('2')))
+add(
+    eq_tbl(sop_f2, '(F2)'),
+    bp('SOP可独立控制两侧无功功率（Q_SOP,i 和 Q_SOP,j 各自独立调节），为故障后电压支撑提供额外自由度。故障k发生后新拓扑T^(k)下的电压灵敏度矩阵：'),
+)
+sop_f3 = (msup(mr('S'), mr('(k)')) + mr(' = LinDistFlow(T') +
+           msup(mr(''), mr('(k)')) + mr(')'))
+add(
+    eq_tbl(sop_f3, '(F3)'),
+    bp('在SOP柔性互联下，T^(k)是重构后的联通拓扑而非孤岛拓扑，可直接用LinDistFlow计算新S^(k)，为后续灵敏度重辨识（6.6节）提供解析初始值，实现故障后快速无缝切换。'),
+    blank(),
+)
+
+# --- 6.3 FIDVR ---
+add(
+    heading('6.3  故障诱发延迟电压恢复（FIDVR）抑制——文献15', lv=2),
+    bp('FIDVR（Fault-Induced Delayed Voltage Recovery，故障诱发延迟电压恢复）是配电网典型故障后电压失稳模式：大量感应电动机在低电压期间堵转，故障切除后吸收大量无功功率，导致电压长时间无法恢复至正常范围。文献15（Park et al., IEEE TPS 2021）利用储能系统（ESS）配合信号时序逻辑（STL）控制律进行FIDVR抑制。'),
+    bp('FIDVR检测条件——联合电压幅值与变化率判断：'),
+)
+fidvr_f4 = (msub(mr('Phi'), mr('FIDVR')) + mr('(t) = 1{V(t) < ') +
+             msub(mr('V'), mr('th')) + mr('} AND 1{dV/dt < 0}'))
+add(
+    eq_tbl(fidvr_f4, '(F4)'),
+    bp('式中：V_th 为FIDVR检测阈值，一般取0.85~0.90 p.u.；当电压低于阈值且持续下降时触发FIDVR控制模式，即进入事中阶段储能紧急响应。'),
+    bp('STL满足度（robustness metric）——连续可微的电压恢复质量指标：'),
+)
+stl_f5 = (msup(mr('rho'), mr('phi')) + mr('(t) = ') +
+           msub(mr('min'), mr('s in [t, t+T_rec]')) +
+           mr('(V(s) - ') + msub(mr('V'), mr('min')) + mr(')'))
+add(
+    eq_tbl(stl_f5, '(F5)'),
+    bp('式中：T_rec 为规定的最大电压恢复时间（典型值2~5 s）；rho^phi(t)>0 表示STL约束满足，值越大恢复裕度越充足。相比硬约束，STL满足度提供连续可微的优化指标，便于与三阶段框架的LP目标函数集成。'),
+    bp('ESS紧急控制律（最大化STL满足度，同时约束SOC偏差）：'),
+)
+ess_f6 = (msup(mr('P'), mr('*')) + msub(mr('ESS'), mr('')) +
+           mr('(t) = argmin') + msub(mr(''), mr('P in [P_min,P_max]')) +
+           mr('{-rho^phi(t) + lambda_E * (E(t) - ') +
+           msub(mr('E'), mr('ref')) + mr(')^2}'))
+add(
+    eq_tbl(ess_f6, '(F6)'),
+    bp('式中：lambda_E 为SOC偏差权重系数，平衡FIDVR抑制与储能能量管理；控制律保证在最大T_rec内将电压恢复至V_min以上，与三阶段框架事中阶段储能快速响应（文献4的LSF驱动调度）在执行层直接对接。'),
+    blank(),
+)
+
+# --- 6.4 PV LVRT ---
+add(
+    heading('6.4  PV逆变器短时电压稳定控制——文献23', lv=2),
+    bp('文献23（Lammert et al., IEEE TEC 2019）研究PV逆变器对故障后短时电压稳定的贡献机理及控制策略。故障期间PV须满足低电压穿越（LVRT, Low Voltage Ride-Through）要求，通过注入无功电流支撑电压恢复。'),
+    bp('LVRT无功电流注入标准（德国VDE-AR-N 4120 / 中国GB/T 19964）：'),
+)
+lvrt_f7 = (msub(mr('I'), mr('Q,PV')) + mr('(t) = ') +
+            msub(mr('k'), mr('LVRT')) + mr(' * max(0, 1 - V(t)/') +
+            msub(mr('V'), mr('n')) + mr(') * ') + msub(mr('I'), mr('n')))
+add(
+    eq_tbl(lvrt_f7, '(F7)'),
+    bp('式中：k_LVRT 为无功电流增益，标准要求k_LVRT >= 2（电压每跌落10%额定值，注入10%额定无功电流）；V_n 为额定电压（1 p.u.）；I_n 为PV额定电流。'),
+    bp('LVRT控制的短时电压恢复目标：'),
+)
+lvrt_f8 = (mr('lim') + msub(mr(''), mr('t -> T_rec')) +
+            mr(' V(t) >= ') + msub(mr('V'), mr('min')))
+add(
+    eq_tbl(lvrt_f8, '(F8)'),
+    bp('文献23表明：适当增大k_LVRT（超出标准最低要求）能显著提升短时恢复速度，但过大时故障切除瞬间可能发生电压过冲，需与ESS紧急控制联合调优。与三阶段框架的关联：PV的LVRT行为改变故障期有功/无功注入特性，需在P-box不确定集中对故障工况单独建模，区别于正常运行的PV出力区间 [P_min(t), P_max(t)]。'),
+    blank(),
+)
+
+# --- 6.5 N-1 LP ---
+add(
+    heading('6.5  N-1安全约束嵌入预规划LP——文献3与文献20', lv=2),
+    bp('为使预规划阶段的优化结果在N-1故障下安全可行，需在LP中引入预想故障集约束。设K_N1为N-1预想故障集（各支路单独开断），|K_N1|=|E|（支路总数）。'),
+    bp('故障拓扑k下的节点电压约束（确定性N-1约束）：'),
+)
+n1_f9 = (msub(mr('V'), mr('min')) + mr(' <= ') +
+          msub(mr('V'), mr('0')) + mr(' + S') + msup(mr(''), mr('(k)')) +
+          mr(' * (') + msub(mr('P'), mr('net')) + mr(' - ') +
+          msub(mr('P'), mr('DER')) + mr(') <= ') + msub(mr('V'), mr('max')) +
+          mr(',   for all k in K_{N1}'))
+add(
+    eq_tbl(n1_f9, '(F9)'),
+    bp('式中：S^(k) 为故障拓扑T^(k)下的电压灵敏度矩阵（由LinDistFlow预计算离线存储）；P_net(t) 为节点净负荷；P_DER(t) 为DER有功出力。N-1约束将LP约束数量扩大为(|K_N1|+1)倍，可采用预先筛选最严苛预想故障（critical contingency screening）降低计算规模。'),
+    bp('分布鲁棒机会约束形式（文献3，Rayati et al., IEEE TSG 2022）——处理故障概率分布不确定性：'),
+)
+dr_f10 = (mr('inf') + msub(mr(''), mr('P in B_eps(P_hat)')) +
+           mr(' Pr(V') + msup(mr(''), mr('(k)')) + mr('_i in [') +
+           msub(mr('V'), mr('min')) + mr(', ') + msub(mr('V'), mr('max')) +
+           mr(']) >= 1 - alpha,   for all k in K_{N1}'))
+add(
+    eq_tbl(dr_f10, '(F10)'),
+    bp('式中：B_eps(P̂) 为以经验分布P̂为中心、Wasserstein半径eps的概率模糊集；1-alpha 为约束置信水平（典型取0.95~0.99）。最坏概率分布下依然满足电压安全约束，避免过保守的确定性N-1约束带来的不必要削减。'),
+    bp('多阶段时间耦合约束（文献20，Guo et al., IEEE TPS 2025）——保证整个调度时域内N-1安全：'),
+)
+ms_f11 = (mr('V') + msup(mr(''), mr('(k)')) + mr('(t) = V') +
+           msup(mr(''), mr('(k)')) + mr('(t-1) + S') +
+           msup(mr(''), mr('(k)')) + mr(' * DeltaP(t),') +
+           mr('   for all k in K_{N1}, t = 1,...,T'))
+add(
+    eq_tbl(ms_f11, '(F11)'),
+    bp('时间耦合约束确保整个调度时域内各预想故障拓扑均满足电压安全，而非仅当前时刻，这对于水电-储能协同调度（水库容量约束、SOC约束跨时刻耦合）尤为重要。结合Proposition 1的内生储备裕度rho_min(t)，N-1约束可等价为对rho_min(t)的加严要求。'),
+    blank(),
+)
+
+# --- 6.6 S(t) Re-init ---
+add(
+    heading('6.6  故障后电压灵敏度矩阵重辨识——文献22扩展', lv=2),
+    bp('文献22（Wang et al., IEEE TPS 2024）的在线自适应LSF估计在拓扑不变时具有最优追踪性能，但故障拓扑突变导致S(t)离散跳变，需检测到跳变后立即重辨识，再继续RLS递推。以下为三步重辨识流程。'),
+    bp('步骤一：拓扑跳变检测（基于灵敏度矩阵相邻步变化量）：'),
+)
+jump_f12 = (msub(mr('delta_S'), mr('k')) + mr(' = ||S(k) - S(k-1)||') +
+             msub(mr(''), mr('F')) + mr(' > ') + msub(mr('delta'), mr('th')) +
+             mr('  =>  拓扑突变，触发重辨识'))
+add(
+    eq_tbl(jump_f12, '(F12)'),
+    bp('式中：||·||_F 为Frobenius范数；delta_th 由正常运行期灵敏度波动方差sigma_S确定（建议delta_th = 3*sigma_S）；检测延迟不超过一个控制周期（1 s），及时触发重辨识，不影响在线调度。'),
+    bp('步骤二：最近邻预想故障匹配，灵敏度矩阵重初始化：'),
+)
+reinit_f13 = (mr('S(t_f+) = ') + msup(msub(mr('S'), mr('0')), mr('(k*)')) +
+               mr(',   k* = argmin') + msub(mr(''), mr('k in K_{N1}')) +
+               mr(' ||T_meas - T') + msup(mr(''), mr('(k)')) + mr('||') +
+               msub(mr(''), mr('F')))
+add(
+    eq_tbl(reinit_f13, '(F13)'),
+    bp('式中：S^(k*)_0 为预想故障k*的LinDistFlow解析灵敏度（预计算离线存储）；T_meas 由量测电流向量估计当前拓扑特征，通过最近邻匹配快速定位开断支路，全过程无需停止在线调度，单步完成初始化。'),
+    bp('步骤三：重初始化后继续Tukey鲁棒RLS递推（与文献4式39形式一致，在故障后量测异常期间抑制异常值污染）：'),
+)
+rls_f14 = (mr('S(t+1) = S(t) + gamma * [DeltaV(t) - S(t)*DeltaP(t)] * ') +
+            mfrac(mr('DeltaP(t)^T'),
+                  mr('||DeltaP(t)||^2 + eps')))
+add(
+    eq_tbl(rls_f14, '(F14)'),
+    bp('采用Tukey双权鲁棒损失在故障后量测异常期间（电机振荡、保护动作引起测量突跳）抑制其对LSF估计的污染，通常约5~10个控制周期（每步1 s）内S(t)收敛至故障拓扑下的真实灵敏度值，为后续重规划提供准确的S^(k*)。'),
+    blank(),
+)
+
+# --- 6.7 DR-MPC ---
+add(
+    heading('6.7  三阶段框架故障扩展综合方案——文献18与文献25', lv=2),
+    bp('文献18（Zhang et al., IEEE TSTE 2022）的三阶段层级Volt-Var控制结构与本框架高度对应，且层级设计天然适配故障响应的时间尺度分解：①毫秒级——保护动作（不在本框架范围）；②秒级——储能快速响应（事中阶段，文献15的STL控制律，式F6）；③分钟级——水电重规划（事件触发重规划阶段，引入N-1约束，式F9）。这一时间尺度分解验证了将故障处理分层嵌入现有三阶段框架的合理性，无需重构框架结构。'),
+    bp('文献25（Li et al., IEEE TSG 2024）的分布鲁棒MPC将故障视为动态不确定性事件（拓扑跳变随机发生），在预规划时域N内预留弹性裕度。DR-MPC优化目标：'),
+)
+drmpc_f15 = (mr('min') + msub(mr('_u'), mr('')) + mr('  max') +
+              msub(mr(''), mr('P in B_W(P_hat)')) + mr('  E') +
+              msub(mr('_P'), mr('')) + mr('[') +
+              msub(mr('SUM'), mr('t=k,...,k+N-1')) +
+              mr(' l(') + msub(mr('x'), mr('t')) + mr(', ') +
+              msub(mr('u'), mr('t')) + mr(')]'))
+add(
+    eq_tbl(drmpc_f15, '(F15)'),
+    bp('式中：B_W(P̂) 为Wasserstein距离球内的概率模糊集，覆盖正常运行不确定性（PV/负荷波动）和低概率故障场景；l(x_t, u_t) 为运行代价（网损+调节成本）。'),
+    bp('故障条件下的电压安全概率约束（结合N-1预想故障集，式F10的DR-MPC扩展）：'),
+)
+fault_cst_f16 = (mr('Pr(') + msub(mr('V'), mr('t')) + mr(' in ') +
+                  msub(mr('X'), mr('safe')) + mr(' | T') + msup(mr(''), mr('(k)')) +
+                  mr(') >= 1 - ') + msub(mr('alpha'), mr('k')) +
+                  mr(',   for all k in K_{N1}, t = 1,...,T'))
+add(
+    eq_tbl(fault_cst_f16, '(F16)'),
+    bp('式中：X_safe = [V_min, V_max]^n 为节点电压安全集合；alpha_k 为第k个预想故障的约束违反容忍率，可按故障严重性分级设置（严重故障alpha_k更小，约束更紧）。DR-MPC通过在Wasserstein球内最大化期望代价，将弹性裕度内嵌至预规划，使三阶段框架在面对低概率故障时具备足够的鲁棒储备。'),
+    blank(),
+)
+
+# --- 6.8 Comparison Table ---
+add(heading('6.8  故障扩展相关文献综合对比', lv=2))
+fault_comp_tbl = [
+    ['文献（序号）',     '核心技术贡献',           '对应框架扩展环节',   '主要适用场景',      '优先级'],
+    ['文献6（Wang）',    'SOP柔性拓扑切换',        '触发机制：故障触发', 'N-1支路开断+重构',  '★★★'],
+    ['文献15（Park）',   'ESS+STL的FIDVR抑制',     '事中：储能紧急控制', '感应电机FIDVR',     '★★★'],
+    ['文献23（Lammert）','PV逆变器LVRT电压恢复',   'P-box：故障期建模',  '高光伏ADN故障',     '★★★'],
+    ['文献22（Wang）',   '自适应RLS灵敏度估计',    '事中：S(t)重辨识',   '拓扑突变失效场景',  '★★'],
+    ['文献3（Rayati）',  'DR机会约束弹性优化',     '预规划：N-1概率约束','故障概率不确定',    '★★'],
+    ['文献20（Guo）',    '多阶段鲁棒无功优化',     '预规划：N-1时间耦合','水电多时段N-1',     '★★'],
+    ['文献18（Zhang）',  '三阶段层级Volt-Var控制', '框架时间尺度分解',   '层级协调故障响应',  '★★'],
+    ['文献25（Li）',     'DR-MPC静/动态不确定性',  '预规划：故障动态建模','DR-MPC弹性裕度',   '★★'],
+]
+add(comp_table(fault_comp_tbl), blank())
+
+
+
+# References (extended with fault scenario papers)
 add(hr(), heading('参考文献', lv=1))
 refs = [
     '[1]  Wang W, Yu N, Gao Y, et al. Safe off-policy deep reinforcement learning algorithm for Volt-VAR control in power distribution systems [J]. IEEE Transactions on Smart Grid, 2020, 11(4): 3008-3018. DOI: 10.1109/TSG.2019.2962625.',
     '[2]  Wang L, Xie L, Yang Y, et al. Distributed online voltage control with fast PV power fluctuations and imperfect communication [J]. IEEE Transactions on Smart Grid, 2023, 14(5): 3398-3411. DOI: 10.1109/TSG.2023.3236724.',
     '[3]  Cao D, Zhao J, Huang Q, et al. Physics-informed graphical representation-enabled deep reinforcement learning for robust distribution system voltage control [J]. IEEE Transactions on Smart Grid, 2024, 15(1): 948-961. DOI: 10.1109/TSG.2023.3267069.',
     '[4]  Wang H, Liang Y, Yao Y, et al. Online model-free DER dispatch via adaptive voltage sensitivity estimation and chance constrained programming [J]. IEEE Transactions on Power Systems, 2024, 39(6): 7317-7330. DOI: 10.1109/TPWRS.2024.3369632.',
+    '[5]  Wang B, Yang T, Luo X, et al. Topology-switching soft open point assisted real-time cooperative operation of active distribution networks [J]. Modern Power Systems and Clean Energy, 2024.',
+    '[6]  Park B, Yang L, Tompaidis D T, et al. Mitigation of motor stalling and FIDVR via energy storage systems with signal temporal logic [J]. IEEE Transactions on Power Systems, 2021, 36(6): 5241-5252.',
+    '[7]  Lammert G, Ospina L F, Pourbeik P, et al. Control of photovoltaic systems for enhanced short-term voltage stability and recovery [J]. IEEE Transactions on Energy Conversion, 2019, 34(1): 243-254.',
+    '[8]  Rayati M, Ranjbar A M, Chevalier S, et al. Distributionally robust chance constrained optimization for providing flexibility in an active distribution network [J]. IEEE Transactions on Smart Grid, 2022, 13(6): 4870-4884.',
+    '[9]  Guo Z, Liu Z, Tang W, et al. Multi-stage robust reactive power optimization in active distribution networks with discrete intertemporal constraints [J]. IEEE Transactions on Power Systems, 2025, 40(1): 389-402.',
+    '[10] Zhang C, Xu Y, Zhao J, et al. Three-stage hierarchically-coordinated voltage/Var control based on PV inverters considering distribution network reconfiguration [J]. IEEE Transactions on Sustainable Energy, 2022, 13(2): 868-881.',
+    '[11] Li Q, Gao W, Zhang H, et al. A distributionally robust model predictive control for static and dynamic uncertainties in smart grids [J]. IEEE Transactions on Smart Grid, 2024, 15(3): 2858-2871.',
 ]
 for ref in refs:
     add(para(run(ref, sz=18), align='both', il=360, fi=-360, before=0, after=60))
