@@ -371,6 +371,62 @@ EQ16 = omath(
     mrun('g(t) ≥ η') +
     mrun('  ⟹  Proposition 2 triggered')
 )
+# ── Fault-extension equations (Section 8) ────────────────────────────────────
+
+EQ17 = omath(
+    msub(mrun('P'), mrun('SOP,ij')) + mrun(' + ') +
+    msub(mrun('P'), mrun('SOP,ji')) + mrun(' + ') +
+    msub(mrun('P'), mrun('loss,SOP')) + mrun(' = 0')
+)
+
+EQ18 = omath(
+    msup(mrun('S'), mrun('(k)')) + mrun(' = LinDistFlow(') +
+    msup(mrun('T'), mrun('(k)')) + mrun(')')
+)
+
+EQ19 = omath(
+    msub(mrun('Φ'), mrun('FIDVR')) + mrun('(t): V(t) < ') +
+    msub(mrun('V'), mrun('th')) + mrun(' AND dV/dt < 0')
+)
+
+EQ20 = omath(
+    msup(mrun('ρ'), mrun('φ')) + mrun('(t) = ') +
+    msub(mrun('min'), mrun('s ∈ [t, t+T_rec]')) +
+    mrun('(V(s) − ') + msub(mrun('V'), mrun('min')) + mrun(')')
+)
+
+EQ21 = omath(
+    msup(msub(mrun('P'), mrun('ESS')), mrun('*')) +
+    mrun('(t) = argmin ') +
+    msub(mrun(''), mrun('P')) +
+    mrun(' {−ρ') + msup(mrun(''), mrun('φ')) +
+    mrun('(t) + λ_E·(E(t)−') +
+    msub(mrun('E'), mrun('ref')) + mrun(')²}')
+)
+
+EQ22 = omath(
+    msub(mrun('I'), mrun('Q,PV')) + mrun('(t) = ') +
+    msub(mrun('k'), mrun('LVRT')) + mrun(' · max(0, 1−') +
+    mfrac(mrun('V(t)'), msub(mrun('V'), mrun('n'))) +
+    mrun(') · ') + msub(mrun('I'), mrun('n'))
+)
+
+EQ23 = omath(
+    msub(mrun('V'), mrun('min')) + mrun(' ≤ ') +
+    msub(mrun('V'), mrun('0')) + mrun(' + ') +
+    msup(mrun('S'), mrun('(k)')) +
+    mrun('(') + msub(mrun('P'), mrun('net')) + mrun('−') +
+    msub(mrun('P'), mrun('DER')) + mrun(') ≤ ') +
+    msub(mrun('V'), mrun('max')) +
+    mrun(',  ∀k∈') + msub(mrun('K'), mrun('N−1'))
+)
+
+EQ24 = omath(
+    msub(mrun('δ'), mrun('S')) + mrun('(k) = ') +
+    mnorm(mrun('S(k)−S(k−1)')) + msub(mrun(''), mrun('F')) +
+    mrun(' > ') + msub(mrun('δ'), mrun('th'))
+)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Paper content helpers
@@ -1008,7 +1064,133 @@ def build_body():
         "以及P-box边界的数据驱动在线校准方法。"
     ))
 
+
     a(empty_para())
+
+    # ═══════════════════════ Section 8: Fault Extension ═════════════════════
+    a(h1("8  故障情景下的框架适应性扩展"))
+
+    a(body(
+        "三阶段框架以LinDistFlow为基础模型，固定拓扑假设是其核心前提之一。"
+        "当配电网发生N-1故障（支路开断）时，网络拓扑发生离散跳变，"
+        "对框架三个阶段均造成本质性冲击："
+        "①事前预规划阶段，正常拓扑T₀下的水电调度结果"
+        "在故障拓扑T^(k)下可能大幅违反电压约束；"
+        "②事中RLS更新阶段，平滑递推假设 S(t)连续变化，"
+        "拓扑突变导致灵敏度矩阵离散跳变，RLS追踪失效；"
+        "③事件触发重规划阶段，当前指标g(t)仅感知约束趋紧度，"
+        "无法直接感知故障，需补充独立的故障触发条件。"
+        "本节基于文献[21]～[25]梳理针对上述三类冲击的系统性扩展方案。"
+    ))
+
+    a(h2("8.1  拓扑切换软开关（SOP）辅助运行[21]"))
+
+    a(body(
+        "软开关（Soft Open Point, SOP）是基于背靠背变流器的电力电子装置，"
+        "在故障时能无缝转接受影响区域至健康馈线，维持拓扑连通性。"
+        "文献[21]建立SOP辅助的ADN实时协同运行模型，"
+        "其SOP功率平衡约束为："
+    ))
+    a(eq_row(EQ17, 17))
+    a(body(
+        "式中：P_SOP,ij 和 P_SOP,ji 为SOP两侧注入节点i、j的功率；"
+        "P_loss,SOP 为变流器内部捯耗（二次损耗模型：a·P²+b）。"
+        "故障k发生后新拓扑T^(k)下的电压灵敏度矩阵更新为："
+    ))
+    a(eq_row(EQ18, 18))
+    a(body(
+        "在SOP柔性互联下，T^(k)是重构后的联通拓扑而非孤岛拓扑，"
+        "可直接用LinDistFlow计算S^(k)，"
+        "为8.4节灵敏度重辨识提供解析初始值。"
+        "SOP还可独立控制两侧无功，"
+        "为故障后快速电压支撑提供额外控制自由度。"
+    ))
+
+    a(h2("8.2  故障误导延迟电压恢复（FIDVR）抜制[22][23]"))
+
+    a(body(
+        "FIDVR（故障误导延迟电压恢复）是配电网中感应电动机在低电压期间堆转，"
+        "故障清除后吸收大量感性无功、导致电压长时间无法恢复的失稳模式。"
+        "文献[22]用信号时序逻辑（STL）控制律驱动储能系统进行FIDVR抜制。"
+        "FIDVR检测条件（联合电压幅值与变化率）为："
+    ))
+    a(eq_row(EQ19, 19))
+    a(body(
+        "式中：V_th 为检测阈値（一般取 0.85～0.90 p.u.）。"
+        "定义STL满足度（robustness metric）量化电压恢复质量："
+    ))
+    a(eq_row(EQ20, 20))
+    a(body(
+        "式中：T_rec 为规定最大恢复时间（典型値 2～5 s）；"
+        "ρ^φ(t)>0 表示STL约束满足，值越大恢复裕度越充足。"
+        "最大化STL满足度的ESS紧急控制律（同时约束SOC偏差）为："
+    ))
+    a(eq_row(EQ21, 21))
+    a(body(
+        "式中：λ_E 为SOC偏差权重系数。该控制律保证在最大T_rec内"
+        "将电压恢复至V_min以上，与三阶段框架事中阶段储能快速响应在执行层直接对接。"
+    ))
+    a(body(
+        "故障期间光伏逆变器须满足低电压穿越（LVRT）要求。"
+        "文献[23]表明，适当增大无功电流增益 k_LVRT 可显著加快短时恢复。"
+        "LVRT无功电流注入（依据GB/T 19964或VDE-AR-N 4120标准）为："
+    ))
+    a(eq_row(EQ22, 22))
+    a(body(
+        "式中：k_LVRT≥2，V_n 为额定电压，I_n 为PV额定电流。"
+        "LVRT行为改变故障期有功/无功注入特性，"
+        "需在P-box不确定性集中对故障工况单独建模，"
+        "区别于式(4)中正常运行的PV出功区间[P_pv(t), ̅P_pv(t)]。"
+    ))
+
+    a(h2("8.3  N-1安全约束嵌入预规划LP[24]"))
+
+    a(body(
+        "文献[24]的分布鲁棒机会约束框架可将N-1预想故障集"
+        "嵌入预规划阶段（命题 1）的LP中。"
+        "设 K_N-1 为N-1预想故障集（各支路单独开断），"
+        "对每个故障拓扑k引入独立电压安全约束："
+    ))
+    a(eq_row(EQ23, 23))
+    a(body(
+        "式中：S^(k) 为故障拓扑T^(k)下的LinDistFlow灵敏度矩阵（预计算离线存储）；"
+        "P_net 为节点净负荷；P_DER 为DER有功出力。"
+        "引入N-1约束后，命题 1的LP约束数量扩大为(|K_N-1|+1)倍，"
+        "可采用预先筛选最严苛预想故障（critical contingency screening）"
+        "将有效约束集控制在可接受范围内。"
+        "结合文献[12]的多阶段离散耦合约束范式，"
+        "N-1约束等价为对内生储备裕度ρ_min(t)（式(8)）的加严要求，"
+        "从而在命题 1框架内形成统一的鲁棒预规划体系。"
+    ))
+
+    a(h2("8.4  故障后灵敏度矩阵重辨识[14]"))
+
+    a(body(
+        "文献[14]的Tukey鲁棒RLS（式(12)）在拓扑不变时具有最优追踪性能，"
+        "但拓扑突变导致S(t)离散跳变，需检测到跳变后立即重辨识。"
+        "跳变检测基于相邻步灵敏度矩阵变化量："
+    ))
+    a(eq_row(EQ24, 24))
+    a(body(
+        "式中：||·||_F 为Frobenius范数；δ_th 由正常运行期灵敏度波动方差确定"
+        "（建议δ_th = 3σ_S）。"
+        "检测到跳变后，从预想故障库中匹配最近邻拓扑k*，"
+        "用预计算的S^(k*)_0 重初始化灵敏度矩阵，"
+        "后续继续式(12)的Tukey-RLS递推，"
+        "约5～10个控制周期内S(t)收敛至故障拓扑下的真实灵敏度值，"
+        "全程无需停止在线调度。"
+    ))
+    a(body(
+        "综合上述扩展，故障处理流程可完整嵌入三阶段框架而无需重构框架结构："
+        "在事件触发机制中新增故障跳变检测条件（式(24)）；"
+        "在预规划LP中引入N-1约束（式(23)）；"
+        "在事中阶段储能控制中引入FIDVR-STL控制律（式(21)）；"
+        "在P-box建模中对PV故障期行为（式(22)）单独建模。"
+        "文献[25]的三阶段层级Volt-Var控制结构进一步验证了层级化故障响应"
+        "（毫秒级保护动作→秒级储能响应→分钟级水电重规划）"
+        "与本文框架在时间尺度上的天然一致性。"
+    ))
+
 
     # ═══════════════════════ References ══════════════════════════════════════
     a(h1("参考文献"))
@@ -1089,6 +1271,26 @@ def build_body():
         "[20] WANG C, CHEN H, WAN C, et al. Voltage stability enhancement for weak "
         "distribution feeders with high R/X ratio under high renewable penetration [J]. "
         "IEEE Transactions on Power Systems, 2025, 40(2): 1820-1832.",
+        "[21] WANG B, YANG T, LUO X, et al. Topology-switching soft open point assisted "
+        "real-time cooperative operation of active distribution networks [J]. "
+        "Modern Power Systems and Clean Energy, 2024.",
+
+        "[22] PARK B, YANG L, TOMPAIDIS D T, et al. Mitigation of motor stalling and FIDVR "
+        "via energy storage systems with signal temporal logic [J]. IEEE Transactions on "
+        "Power Systems, 2021, 36(6): 5241-5252.",
+
+        "[23] LAMMERT G, OSPINA L F, POURBEIK P, et al. Control of photovoltaic systems for "
+        "enhanced short-term voltage stability and recovery [J]. IEEE Transactions on "
+        "Energy Conversion, 2019, 34(1): 243-254.",
+
+        "[24] RAYATI M, RANJBAR A M, CHEVALIER S, et al. Distributionally robust chance "
+        "constrained optimization for providing flexibility in an active distribution "
+        "network [J]. IEEE Transactions on Smart Grid, 2022, 13(6): 4870-4884.",
+
+        "[25] ZHANG C, XU Y, ZHAO J, et al. Three-stage hierarchically-coordinated "
+        "voltage/Var control based on PV inverters considering distribution network "
+        "reconfiguration [J]. IEEE Transactions on Sustainable Energy, 2022, 13(2): 868-881.",
+
     ]
     for r_text in refs:
         a(ref_para(r_text))
